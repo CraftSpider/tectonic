@@ -2669,6 +2669,7 @@ dependencies = [
 name = "tectonic_bridge_freetype2"
 version = "0.0.0-dev.0"
 dependencies = [
+ "libc",
  "tectonic_dep_support",
 ]
 
@@ -2684,6 +2685,7 @@ name = "tectonic_bridge_harfbuzz"
 version = "0.0.0-dev.0"
 dependencies = [
  "cc",
+ "libc",
  "tectonic_bridge_graphite2",
  "tectonic_dep_support",
 ]
@@ -2860,6 +2862,7 @@ name = "tectonic_xetex_layout"
 version = "0.0.0-dev.0"
 dependencies = [
  "cc",
+ "libc",
  "tectonic_bridge_core",
  "tectonic_bridge_freetype2",
  "tectonic_bridge_graphite2",
@@ -2867,6 +2870,7 @@ dependencies = [
  "tectonic_bridge_icu",
  "tectonic_cfg_support",
  "tectonic_dep_support",
+ "tectonic_io_base",
 ]
 
 [[package]]
