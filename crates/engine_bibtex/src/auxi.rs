@@ -48,90 +48,73 @@ type Error = chumsky::error::Cheap<u8>;
 fn aux_parser() -> impl Parser<u8, Option<AuxCmd>, Error = Error> {
     use chumsky::prelude::*;
 
-    let arg = |cmd: fn(CmdArgs<Vec<u8>>) -> AuxKind| {
-        none_of::<_, _, Error>([b'}'])
-            .repeated()
-            .map_with_span(move |str, span| {
-                if str.iter().copied().any(|c: u8| c.is_ascii_whitespace()) {
-                    cmd(CmdArgs::WhitespaceInArg(span.start))
-                } else {
-                    cmd(CmdArgs::Args(str))
-                }
-            })
-            .then_ignore(just(b'}'))
-            .then(end().or_not())
-            .map_with_span(move |(cur, end), span| {
-                if let Some(_) = end {
-                    cur
-                } else {
-                    cmd(CmdArgs::StuffAfterRightBrace(span.end))
-                }
-            })
-            .or(any::<_, Error>()
-                .repeated()
-                .map_with_span(move |_, span| cmd(CmdArgs::NoRightBrace(span.end))))
-    };
+    fn sarb<T>((cur, end): (CmdArgs<T>, Option<()>), span: core::ops::Range<usize>) -> CmdArgs<T> {
+        if let Some(_) = end {
+            cur
+        } else {
+            CmdArgs::StuffAfterRightBrace(span.end)
+        }
+    }
 
-    let args = |cmd: fn(CmdArgs<Vec<Vec<u8>>>) -> AuxKind| {
-        none_of::<_, _, Error>([b'}', b','])
-            .repeated()
-            .map(move |str| {
-                if str.iter().copied().any(|c: u8| c.is_ascii_whitespace()) {
-                    None
-                } else {
-                    Some(str)
-                }
-            })
-            .separated_by(just(b','))
-            .map_with_span(move |strs, span| {
-                let (ws, strs) = strs.into_iter().fold(
-                    (false, Vec::new()),
-                    |(is_ws, mut strs), str| match str {
+    fn nrb<T>(_: Vec<u8>, span: core::ops::Range<usize>) -> CmdArgs<T> {
+        CmdArgs::NoRightBrace(span.end)
+    }
+
+    let arg = none_of::<_, _, Error>([b'}'])
+        .repeated()
+        .map_with_span(move |str, span| {
+            if str.iter().copied().any(|c: u8| c.is_ascii_whitespace()) {
+                CmdArgs::WhitespaceInArg(span.start)
+            } else {
+                CmdArgs::Args(str)
+            }
+        })
+        .then_ignore(just(b'}'))
+        .then(end().or_not())
+        .map_with_span(sarb)
+        .or(any().repeated().map_with_span(nrb));
+
+    let args = none_of::<_, _, Error>([b'}', b','])
+        .repeated()
+        .map(move |str| {
+            if str.iter().copied().any(|c: u8| c.is_ascii_whitespace()) {
+                None
+            } else {
+                Some(str)
+            }
+        })
+        .separated_by(just(b','))
+        .map_with_span(move |strs, span| {
+            let (ws, strs) =
+                strs.into_iter()
+                    .fold((false, Vec::new()), |(is_ws, mut strs), str| match str {
                         Some(str) => {
                             strs.push(str);
                             (is_ws, strs)
                         }
                         None => (true, strs),
-                    },
-                );
-                if ws {
-                    cmd(CmdArgs::WhitespaceInArg(span.start))
-                } else {
-                    cmd(CmdArgs::Args(strs))
-                }
-            })
-            .then_ignore(just(b'}'))
-            .then(end().or_not())
-            .map_with_span(move |(cur, end), span| {
-                if let Some(_) = end {
-                    cur
-                } else {
-                    cmd(CmdArgs::StuffAfterRightBrace(span.end))
-                }
-            })
-            .or(any()
-                .repeated()
-                .map_with_span(move |_, span: std::ops::Range<usize>| {
-                    cmd(CmdArgs::NoRightBrace(span.end))
-                }))
+                    });
+            if ws {
+                CmdArgs::WhitespaceInArg(span.start)
+            } else {
+                CmdArgs::Args(strs)
+            }
+        })
+        .then_ignore(just(b'}'))
+        .then(end().or_not())
+        .map_with_span(sarb)
+        .or(any().repeated().map_with_span(nrb));
+
+    let cmd = |cmd: &'static [u8]| {
+        just::<_, _, Error>(cmd)
+            .map_with_span(|_, span| span.end)
+            .then_ignore(just(b'{'))
     };
 
-    let bibdata = just::<_, _, Error>(b"\\bibdata")
-        .map_with_span(|_, span| span.end)
-        .then_ignore(just(b'{'))
-        .then(args(AuxKind::Data));
-    let bibstyle = just::<_, _, Error>(b"\\bibstyle")
-        .map_with_span(|_, span| span.end)
-        .then_ignore(just(b'{'))
-        .then(arg(AuxKind::Style));
-    let citation = just::<_, _, Error>(b"\\citation")
-        .map_with_span(|_, span| span.end)
-        .then_ignore(just(b'{'))
-        .then(args(AuxKind::Citation));
-    let input = just::<_, _, Error>(b"\\@input")
-        .map_with_span(|_, span| span.end)
-        .then_ignore(just(b'{'))
-        .then(arg(AuxKind::Input));
+    let bibdata = cmd(b"\\bibdata").then(args.clone().map(AuxKind::Data));
+    let bibstyle = cmd(b"\\bibstyle").then(arg.clone().map(AuxKind::Style));
+    let citation = cmd(b"\\citation").then(args.map(AuxKind::Citation));
+    let input = cmd(b"\\@input").then(arg.map(AuxKind::Input));
 
     choice((bibdata, bibstyle, citation, input))
         .map(|(offset, kind)| AuxCmd { offset, kind })
