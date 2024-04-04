@@ -242,6 +242,11 @@ pub mod c_api {
 
     use tectonic_bridge_core::CoreBridgeState;
 
+    pub mod core;
+    pub mod engine;
+    pub mod ext;
+
+    /// cbindgen:ignore
     #[allow(improper_ctypes)] // for CoreBridgeState
     extern "C" {
         pub fn tt_xetex_set_int_variable(

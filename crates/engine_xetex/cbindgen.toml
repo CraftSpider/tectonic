@@ -5,6 +5,7 @@ include_guard = "TECTONIC_ENGINE_XETEX_BINDGEN_H"
 
 [export.rename]
 "CoreBridgeState" = "ttbc_state_t"
+"Tag" = "hb_tag_t"
 
 [enum]
 prefix_with_name = true
