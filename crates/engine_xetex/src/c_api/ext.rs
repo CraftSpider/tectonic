@@ -1,25 +1,31 @@
-/*
-int
-linebreak_next(void)
-{
-    if (brkIter != NULL)
-        return ubrk_next((UBreakIterator*)brkIter);
-    else
-        return findNextGraphiteBreak();
-}
- */
-
-use crate::c_api::core::{scaled_t, FONT_FLAGS_COLORED};
-use crate::c_api::engine::{loaded_font_flags, loaded_font_mapping, memory_word};
-use std::cell::UnsafeCell;
+use crate::c_api::core::{
+    scaled_t, AUTO, FONT_FLAGS_COLORED, ICUMAPPING, RAW, US_NATIVE_UTF16, UTF16BE, UTF16LE, UTF8,
+};
+use crate::c_api::engine::{
+    begin_diagnostic, end_diagnostic, file_name, font_area, font_layout_engine, loaded_font_flags,
+    loaded_font_mapping, memory_word, print_int, print_nl, print_str,
+};
+use crate::c_api::mfmp::{get_tex_str, maketexstring};
+use std::cell::{Cell, UnsafeCell};
 use std::ffi::CStr;
 use std::{ptr, slice};
 use tectonic_bridge_harfbuzz as hb;
-use tectonic_bridge_icu::{ubrk_next, UBreakIterator};
-use tectonic_xetex_layout::c_api::engine::findNextGraphiteBreak;
+use tectonic_bridge_icu::{
+    ubrk_close, ubrk_next, ubrk_open, ubrk_setText, ucnv_close, ucnv_open, UBreakIterator,
+    UBreakIteratorType, U_FAILURE, U_ZERO_ERROR,
+};
+use tectonic_xetex_layout::c_api::engine::{
+    findNextGraphiteBreak, initGraphiteBreaking, XeTeXLayoutEngineBase,
+};
 use tectonic_xetex_layout::c_api::{Fixed, GlyphID, XeTeXLayoutEngine};
 
 pub const NATIVE_INFO_OFFSET: usize = 4;
+pub const OTGR_FONT_FLAG: u32 = 0xFFFE;
+
+thread_local! {
+    static BRK_ITER: Cell<*mut UBreakIterator> = Cell::new(ptr::null_mut());
+    static BRK_LOCALE_STR_NUM: Cell<i32> = Cell::new(0);
+}
 
 unsafe fn native_glyph_count(node: *mut memory_word) -> u16 {
     (*node.add(NATIVE_INFO_OFFSET)).b16.s0
@@ -34,11 +40,113 @@ fn fix_to_d(f: Fixed) -> f64 {
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn linebreak_start(
+    f: libc::c_int,
+    locale_str_num: i32,
+    text: *mut u16,
+    text_len: i32,
+) {
+    let locale = get_tex_str(locale_str_num);
+
+    if *(*font_area.get()).add(f as usize) as u32 == OTGR_FONT_FLAG && locale.to_bytes() == b"G" {
+        let engine = (*font_layout_engine.get())
+            .add(f as usize)
+            .cast::<XeTeXLayoutEngineBase>();
+        if initGraphiteBreaking(engine, text, text_len as libc::c_uint) {
+            return;
+        }
+    }
+
+    if locale_str_num != BRK_LOCALE_STR_NUM.get() && !BRK_ITER.get().is_null() {
+        ubrk_close(BRK_ITER.get());
+        BRK_ITER.set(ptr::null_mut());
+    }
+
+    let mut status = U_ZERO_ERROR;
+    if BRK_ITER.get().is_null() {
+        BRK_ITER.set(ubrk_open(
+            UBreakIteratorType::Line,
+            locale.as_ptr(),
+            ptr::null(),
+            0,
+            &mut status,
+        ));
+        if U_FAILURE(status) {
+            begin_diagnostic();
+            print_nl(b'E' as i32);
+            print_str(b"rror ");
+            print_int(status);
+            print_str(b" creating linebreak iterator for locale `");
+            print_str(locale.to_bytes());
+            print_str(b"'; trying default locale `en_us'.");
+            end_diagnostic(true);
+            if !BRK_ITER.get().is_null() {
+                ubrk_close(BRK_ITER.get());
+            }
+            status = U_ZERO_ERROR;
+            BRK_ITER.set(ubrk_open(
+                UBreakIteratorType::Line,
+                b"en_us\0".as_ptr().cast(),
+                ptr::null(),
+                0,
+                &mut status,
+            ));
+        }
+        BRK_LOCALE_STR_NUM.set(locale_str_num);
+    }
+
+    if BRK_ITER.get().is_null() {
+        panic!("failed to create linebreak iterator, status={}", status);
+    }
+
+    ubrk_setText(BRK_ITER.get(), text, text_len, &mut status);
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn linebreak_next() -> libc::c_int {
-    if !(*brkIter.get()).is_null() {
-        ubrk_next(*brkIter.get())
+    if !BRK_ITER.get().is_null() {
+        ubrk_next(BRK_ITER.get())
     } else {
         findNextGraphiteBreak()
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn get_encoding_mode_and_info(info: *mut i32) -> libc::c_int {
+    /* \XeTeXinputencoding "enc-name"
+     *   -> name is packed in |nameoffile| as a C string, starting at [1]
+     * Check if it's a built-in name; if not, try to open an ICU converter by that name
+     */
+    *info = 0;
+    let file_name = file_name().to_bytes();
+    if file_name.eq_ignore_ascii_case(b"auto") {
+        AUTO
+    } else if file_name.eq_ignore_ascii_case(b"utf8") {
+        UTF8
+    } else if file_name.eq_ignore_ascii_case(b"utf16") {
+        US_NATIVE_UTF16
+    } else if file_name.eq_ignore_ascii_case(b"utf16be") {
+        UTF16BE
+    } else if file_name.eq_ignore_ascii_case(b"utf16le") {
+        UTF16LE
+    } else if file_name.eq_ignore_ascii_case(b"bytes") {
+        RAW
+    } else {
+        let mut err = U_ZERO_ERROR;
+        let cnv = ucnv_open(file_name.as_ptr().cast(), &mut err);
+        if cnv.is_null() {
+            begin_diagnostic();
+            print_nl(b'U' as i32); /* ensure message starts on a new line */
+            print_str(b"nknown encoding `");
+            print_str(file_name);
+            print_str(b"'; reading as raw bytes");
+            end_diagnostic(true);
+            RAW
+        } else {
+            ucnv_close(cnv);
+            *info = maketexstring(file_name.as_ptr().cast());
+            ICUMAPPING
+        }
     }
 }
 
@@ -383,7 +491,4 @@ extern "C" {
         e: *const libc::c_char,
         byteMapping: libc::c_char,
     ) -> *const libc::c_void;
-
-    static brkIter: UnsafeCell<*mut UBreakIterator>;
-    static brkLocaleStrNum: UnsafeCell<libc::c_int>;
 }
