@@ -1,4 +1,16 @@
 pub const FONT_FLAGS_COLORED: libc::c_char = 0x01;
 
+pub const AUTO: libc::c_int = 0;
+pub const UTF8: libc::c_int = 1;
+pub const UTF16BE: libc::c_int = 2;
+pub const UTF16LE: libc::c_int = 3;
+pub const RAW: libc::c_int = 4;
+pub const ICUMAPPING: libc::c_int = 5;
+pub const US_NATIVE_UTF16: libc::c_int = if cfg!(target_endian = "big") {
+    UTF16BE
+} else {
+    UTF16LE
+};
+
 #[allow(nonstandard_style)]
 pub type scaled_t = i32;

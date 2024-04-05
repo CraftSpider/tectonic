@@ -245,6 +245,7 @@ pub mod c_api {
     pub mod core;
     pub mod engine;
     pub mod ext;
+    pub mod mfmp;
 
     /// cbindgen:ignore
     #[allow(improper_ctypes)] // for CoreBridgeState
