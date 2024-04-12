@@ -2831,6 +2831,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "tectonic_mac_core"
+version = "0.0.0-dev.0"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "tectonic_pdf_io"
 version = "0.0.0-dev.0"
 dependencies = [
@@ -2880,6 +2887,7 @@ dependencies = [
  "tectonic_cfg_support",
  "tectonic_dep_support",
  "tectonic_io_base",
+ "tectonic_mac_core",
 ]
 
 [[package]]
