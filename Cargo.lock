@@ -2673,6 +2673,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "tectonic_bridge_fontconfig"
+version = "0.0.0-dev.0"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "tectonic_bridge_freetype2"
 version = "0.0.0-dev.0"
 dependencies = [
@@ -2881,6 +2888,7 @@ dependencies = [
  "cc",
  "libc",
  "tectonic_bridge_core",
+ "tectonic_bridge_fontconfig",
  "tectonic_bridge_freetype2",
  "tectonic_bridge_graphite2",
  "tectonic_bridge_harfbuzz",
