@@ -2676,6 +2676,8 @@ name = "tectonic_bridge_fontconfig"
 version = "0.0.0-dev.0"
 dependencies = [
  "libc",
+ "tectonic_cfg_support",
+ "tectonic_dep_support",
 ]
 
 [[package]]
