@@ -2803,6 +2803,7 @@ dependencies = [
  "tectonic_bridge_flate",
  "tectonic_bridge_graphite2",
  "tectonic_bridge_harfbuzz",
+ "tectonic_bridge_icu",
  "tectonic_cfg_support",
  "tectonic_errors",
  "tectonic_pdf_io",
