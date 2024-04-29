@@ -2703,6 +2703,7 @@ version = "0.0.0-dev.0"
 dependencies = [
  "cc",
  "libc",
+ "tectonic_bridge_freetype2",
  "tectonic_bridge_graphite2",
  "tectonic_dep_support",
 ]
