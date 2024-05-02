@@ -1,4 +1,5 @@
 pub const FONT_FLAGS_COLORED: libc::c_char = 0x01;
+pub const FONT_FLAGS_VERTICAL: libc::c_char = 0x02;
 
 pub const AUTO: libc::c_int = 0;
 pub const UTF8: libc::c_int = 1;

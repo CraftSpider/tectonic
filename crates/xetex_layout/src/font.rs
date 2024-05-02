@@ -1,5 +1,6 @@
-use crate::c_api::{Fixed, GlyphBBox, GlyphID, PlatformFontRef};
-use crate::utils::fix_to_d;
+use crate::c_api::{GlyphBBox, PlatformFontRef};
+use crate::utils::{d_to_fix, fix_to_d};
+use crate::{Fixed, GlyphID};
 use std::cell::RefCell;
 use std::ffi::{CStr, CString};
 use std::path::Path;
@@ -422,8 +423,8 @@ impl Font {
         }
     }
 
-    pub(crate) fn map_char_to_glyph(&self, ch: u32) -> GlyphID {
-        match self.ft_face().get_char_index(ch) {
+    pub fn map_char_to_glyph(&self, ch: char) -> GlyphID {
+        match self.ft_face().get_char_index(ch as u32) {
             Some(val) => val.get() as GlyphID,
             None => 0,
         }
@@ -483,19 +484,9 @@ impl Font {
         }
     }
 
-    pub(crate) fn get_glyph_height_depth(
-        &mut self,
-        gid: GlyphID,
-        height: Option<&mut f32>,
-        depth: Option<&mut f32>,
-    ) {
+    pub fn get_glyph_height_depth(&mut self, gid: GlyphID) -> (f32, f32) {
         let bbox = self.get_glyph_bounds(gid);
-        if let Some(height) = height {
-            *height = bbox.y_max;
-        }
-        if let Some(depth) = depth {
-            *depth = -bbox.y_min;
-        }
+        (bbox.y_max, -bbox.y_min)
     }
 
     pub(crate) fn filename(&self, index: &mut u32) -> &CStr {
@@ -523,7 +514,7 @@ impl Font {
         self.vertical
     }
 
-    pub(crate) fn set_layout_dir_vertical(&mut self, vertical: bool) {
+    pub fn set_layout_dir_vertical(&mut self, vertical: bool) {
         self.vertical = vertical;
     }
 
@@ -531,19 +522,24 @@ impl Font {
         self.point_size
     }
 
-    pub(crate) fn ascent(&self) -> f32 {
+    pub fn ascent(&self) -> f32 {
         self.ascent
     }
 
-    pub(crate) fn descent(&self) -> f32 {
+    pub fn descent(&self) -> f32 {
         self.descent
     }
 
-    pub(crate) fn cap_height(&self) -> f32 {
+    pub fn slant(&self) -> Fixed {
+        let angle = self.italic_angle() as f64;
+        d_to_fix(f64::tan(-angle * std::f64::consts::PI / 180.0))
+    }
+
+    pub fn cap_height(&self) -> f32 {
         self.cap_height
     }
 
-    pub(crate) fn x_height(&self) -> f32 {
+    pub fn x_height(&self) -> f32 {
         self.x_height
     }
 

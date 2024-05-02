@@ -243,7 +243,7 @@ mod sealed {
     pub trait Sealed {}
 
     impl Sealed for str {}
-    impl Sealed for (*const u16, usize) {}
+    impl Sealed for [u16] {}
 }
 
 #[allow(clippy::len_without_is_empty)]
@@ -267,17 +267,17 @@ impl StrEnc for str {
     }
 }
 
-impl StrEnc for (*const u16, usize) {
+impl StrEnc for [u16] {
     fn enc(&self) -> EncForm {
         EncForm::utf16
     }
 
     fn as_ptr(&self) -> *const () {
-        self.0.cast()
+        (*self).as_ptr().cast()
     }
 
     fn len(&self) -> usize {
-        self.1
+        (*self).len()
     }
 }
 

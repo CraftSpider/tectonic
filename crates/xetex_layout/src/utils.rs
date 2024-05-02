@@ -1,4 +1,5 @@
-use crate::c_api::{Fixed, PlatformFontRef, RawPlatformFontRef};
+use crate::c_api::PlatformFontRef;
+use crate::{Fixed, RawPlatformFontRef};
 use std::ptr::NonNull;
 
 pub fn fix_to_d(f: Fixed) -> f64 {

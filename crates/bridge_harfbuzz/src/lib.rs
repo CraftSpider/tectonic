@@ -70,6 +70,10 @@ impl Tag {
         Tag(unsafe { sys::hb_tag_from_string(val.as_ptr().cast(), val.len() as libc::c_int) })
     }
 
+    pub fn from_bytes(val: &[u8]) -> Tag {
+        Tag(unsafe { sys::hb_tag_from_string(val.as_ptr().cast(), val.len() as libc::c_int) })
+    }
+
     pub fn from_cstr(val: &CStr) -> Tag {
         // SAFETY: The provided string is not used past this call, and not read past the terminating
         //         null

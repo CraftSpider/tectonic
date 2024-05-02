@@ -134,10 +134,10 @@ pub struct hb_glyph_extents_t {
 #[derive(Clone, Debug)]
 #[repr(C)]
 pub struct hb_feature_t {
-    pub tag: hb_tag_t,
+    pub tag: crate::Tag,
     pub value: u32,
-    start: libc::c_uint,
-    end: libc::c_uint,
+    pub start: libc::c_uint,
+    pub end: libc::c_uint,
 }
 
 #[repr(C)]

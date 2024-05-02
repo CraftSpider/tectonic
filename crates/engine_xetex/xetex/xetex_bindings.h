@@ -18,16 +18,93 @@
  */
 #define FORMAT_SERIAL 33
 
+#define FONT_FLAGS_COLORED 1
+
+#define FONT_FLAGS_VERTICAL 2
+
+#define AUTO 0
+
+#define UTF8 1
+
+#define UTF16BE 2
+
+#define UTF16LE 3
+
+#define RAW 4
+
+#define ICUMAPPING 5
+
+#define NATIVE_INFO_OFFSET 4
+
+#define OTGR_FONT_FLAG 65534
+
+typedef int32_t scaled_t;
+
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
 
-extern int tt_xetex_set_int_variable(const char *var_name, int value);
+extern void font_mapping_warning(const void *mappingNameP,
+                                 int32_t mappingNameLen,
+                                 int32_t warningType);
 
-extern int tt_engine_xetex_main(ttbc_state_t *api,
-                                const char *dump_name,
-                                const char *input_file_name,
-                                uint64_t build_date);
+extern void begin_diagnostic(void);
+
+extern void print_nl(int32_t s);
+
+extern void print_char(int32_t c);
+
+extern void print_int(int32_t n);
+
+extern void end_diagnostic(bool blank_line);
+
+extern void font_feature_warning(const void *featureNameP,
+                                 int32_t featLen,
+                                 const void *settingNameP,
+                                 int32_t setLen);
+
+void linebreak_start(int f, int32_t locale_str_num, uint16_t *text, int32_t text_len);
+
+int linebreak_next(XeTeXLayoutEngine engine);
+
+int get_encoding_mode_and_info(int32_t *info);
+
+double read_double(const char **s);
+
+/**
+ * returns 1 to go to next_option, -1 for bad_option, 0 to continue
+ */
+int readCommonFeatures(const char *feat,
+                       const char *end,
+                       float *extend,
+                       float *slant,
+                       float *embolden,
+                       float *letterspace,
+                       uint32_t *rgb_value);
+
+void splitFontName(const char *name,
+                   const char **var,
+                   const char **feat,
+                   const char **end,
+                   int *index);
+
+void ot_get_font_metrics(XeTeXLayoutEngine engine,
+                         scaled_t *ascent,
+                         scaled_t *descent,
+                         scaled_t *xheight,
+                         scaled_t *capheight,
+                         scaled_t *slant);
+
+XeTeXLayoutEngine loadOTfont(RawPlatformFontRef,
+                             XeTeXFont font,
+                             Fixed scaled_size,
+                             const char *cp1);
+
+extern void *load_mapping_file(const char *s, const char *e, char byteMapping);
+
+extern char *gettexstring(int32_t s);
+
+extern int32_t maketexstring(const char *s);
 
 #ifdef __cplusplus
 } // extern "C"

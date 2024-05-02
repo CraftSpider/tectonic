@@ -39,6 +39,7 @@ mod defs {
     }
 }
 
+use crate::c_api::core::scaled_t;
 pub use defs::*;
 
 #[repr(C)]
@@ -72,10 +73,18 @@ extern "C" {
     pub fn print_char(c: i32);
     pub fn print_int(n: i32);
     pub fn end_diagnostic(blank_line: bool);
+    pub fn font_feature_warning(
+        featureNameP: *const libc::c_void,
+        featLen: i32,
+        settingNameP: *const libc::c_void,
+        setLen: i32,
+    );
 
     pub static loaded_font_flags: UnsafeCell<libc::c_char>;
     pub static loaded_font_mapping: UnsafeCell<*const libc::c_void>;
+    pub static loaded_font_letter_space: UnsafeCell<scaled_t>;
     pub static font_area: UnsafeCell<*mut i32>;
     pub static font_layout_engine: UnsafeCell<*mut *mut ()>;
+    pub static native_font_type_flag: UnsafeCell<i32>;
     pub static name_of_file: UnsafeCell<*mut libc::c_char>;
 }

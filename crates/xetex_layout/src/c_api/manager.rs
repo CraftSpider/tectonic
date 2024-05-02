@@ -1,6 +1,7 @@
-use crate::c_api::{Fixed, RawPlatformFontRef, XeTeXFont};
+use crate::c_api::{Fixed, XeTeXFont};
 use crate::manager::{Engine, FontManager};
 use crate::utils::raw_to_rs;
+use crate::RawPlatformFontRef;
 use std::convert::TryFrom;
 use std::ffi::CStr;
 use std::{ptr, slice};
