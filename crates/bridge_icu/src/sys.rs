@@ -24,6 +24,19 @@ pub fn U_SUCCESS(code: UErrorCode) -> bool {
 }
 
 #[repr(C)]
+pub enum UBreakIteratorType {
+    Character,
+    Word,
+    Line,
+    Sentence,
+    Title,
+    Count,
+}
+
+#[repr(C)]
+pub struct UBreakIterator(());
+
+#[repr(C)]
 pub struct UConverter(());
 
 extern "C" {
@@ -49,5 +62,9 @@ extern "C" {
         pub fn ucnv_getMaxCharSize(
             conv: *mut UConverter,
         ) -> i8;
+        pub fn ubrk_open(ty: UBreakIteratorType, locale: *const libc::c_char, text: *const UChar, textLength: i32, status: *mut UErrorCode) -> *mut UBreakIterator;
+        pub fn ubrk_next(bi: *mut UBreakIterator) -> i32;
+        pub fn ubrk_setText(bi: *mut UBreakIterator, text: *const UChar, textLength: i32, status: *mut UErrorCode);
+        pub fn ubrk_close(bi: *mut UBreakIterator);
     }
 }

@@ -1,30 +1,29 @@
 use crate::c_api::core::{
-    scaled_t, AUTO, FONT_FLAGS_COLORED, ICUMAPPING, RAW, US_NATIVE_UTF16, UTF16BE, UTF16LE, UTF8,
+    scaled_t, AUTO, FONT_FLAGS_COLORED, FONT_FLAGS_VERTICAL, ICUMAPPING, RAW, US_NATIVE_UTF16,
+    UTF16BE, UTF16LE, UTF8,
 };
 use crate::c_api::engine::{
-    begin_diagnostic, end_diagnostic, file_name, font_area, font_layout_engine, loaded_font_flags,
-    loaded_font_mapping, memory_word, print_int, print_nl, print_str,
+    begin_diagnostic, end_diagnostic, file_name, font_area, font_feature_warning,
+    font_layout_engine, loaded_font_flags, loaded_font_letter_space, loaded_font_mapping,
+    memory_word, native_font_type_flag, print_int, print_nl, print_str,
 };
 use crate::c_api::mfmp::{get_tex_str, maketexstring};
-use std::cell::{Cell, UnsafeCell};
-use std::ffi::CStr;
+use std::borrow::Cow;
+use std::cell::{Cell, RefCell};
+use std::ffi::{CStr, CString};
 use std::{ptr, slice};
 use tectonic_bridge_harfbuzz as hb;
-use tectonic_bridge_icu::{
-    ubrk_close, ubrk_next, ubrk_open, ubrk_setText, ucnv_close, ucnv_open, UBreakIterator,
-    UBreakIteratorType, U_FAILURE, U_ZERO_ERROR,
-};
-use tectonic_xetex_layout::c_api::engine::{
-    findNextGraphiteBreak, initGraphiteBreaking, XeTeXLayoutEngineBase,
-};
-use tectonic_xetex_layout::c_api::{Fixed, GlyphID, XeTeXLayoutEngine};
+use tectonic_bridge_icu as icu;
+use tectonic_xetex_layout::engine::LayoutEngine;
+use tectonic_xetex_layout::manager::{Engine, FontManager};
+use tectonic_xetex_layout::{Fixed, GlyphID, RawPlatformFontRef, XeTeXFont, XeTeXLayoutEngine};
 
 pub const NATIVE_INFO_OFFSET: usize = 4;
 pub const OTGR_FONT_FLAG: u32 = 0xFFFE;
 
 thread_local! {
-    static BRK_ITER: Cell<*mut UBreakIterator> = Cell::new(ptr::null_mut());
-    static BRK_LOCALE_STR_NUM: Cell<i32> = Cell::new(0);
+    static BRK_ITER: RefCell<Option<icu::BreakIterator>> = const { RefCell::new(None) };
+    static BRK_LOCALE_STR_NUM: Cell<i32> = const { Cell::new(0) };
 }
 
 unsafe fn native_glyph_count(node: *mut memory_word) -> u16 {
@@ -47,68 +46,58 @@ pub unsafe extern "C" fn linebreak_start(
     text_len: i32,
 ) {
     let locale = get_tex_str(locale_str_num);
+    let text = slice::from_raw_parts(text, text_len as usize);
 
     if *(*font_area.get()).add(f as usize) as u32 == OTGR_FONT_FLAG && locale.to_bytes() == b"G" {
         let engine = (*font_layout_engine.get())
             .add(f as usize)
-            .cast::<XeTeXLayoutEngineBase>();
-        if initGraphiteBreaking(engine, text, text_len as libc::c_uint) {
+            .cast::<LayoutEngine>();
+        if (*engine).init_graphite_break(text) {
             return;
         }
     }
 
-    if locale_str_num != BRK_LOCALE_STR_NUM.get() && !BRK_ITER.get().is_null() {
-        ubrk_close(BRK_ITER.get());
-        BRK_ITER.set(ptr::null_mut());
+    if locale_str_num != BRK_LOCALE_STR_NUM.get() && BRK_ITER.with_borrow(|b| b.is_some()) {
+        BRK_ITER.with_borrow_mut(|b| *b = None);
     }
 
-    let mut status = U_ZERO_ERROR;
-    if BRK_ITER.get().is_null() {
-        BRK_ITER.set(ubrk_open(
-            UBreakIteratorType::Line,
-            locale.as_ptr(),
-            ptr::null(),
-            0,
-            &mut status,
-        ));
-        if U_FAILURE(status) {
-            begin_diagnostic();
-            print_nl(b'E' as i32);
-            print_str(b"rror ");
-            print_int(status);
-            print_str(b" creating linebreak iterator for locale `");
-            print_str(locale.to_bytes());
-            print_str(b"'; trying default locale `en_us'.");
-            end_diagnostic(true);
-            if !BRK_ITER.get().is_null() {
-                ubrk_close(BRK_ITER.get());
+    if BRK_ITER.with_borrow(|b| b.is_none()) {
+        match icu::BreakIterator::new(&locale) {
+            Ok(bi) => BRK_ITER.with_borrow_mut(|b| *b = Some(bi)),
+            Err(err) => {
+                begin_diagnostic();
+                print_nl(b'E' as i32);
+                print_str(b"rror ");
+                print_int(err.into_raw());
+                print_str(b" creating linebreak iterator for locale `");
+                print_str(locale.to_bytes());
+                print_str(b"'; trying default locale `en_us'.");
+                end_diagnostic(true);
+                match icu::BreakIterator::new(CStr::from_bytes_with_nul(b"en_us\0").unwrap()) {
+                    Ok(bi) => BRK_ITER.with_borrow_mut(|b| *b = Some(bi)),
+                    Err(err) => panic!(
+                        "failed to create linebreak iterator, status={}",
+                        err.into_raw()
+                    ),
+                }
             }
-            status = U_ZERO_ERROR;
-            BRK_ITER.set(ubrk_open(
-                UBreakIteratorType::Line,
-                b"en_us\0".as_ptr().cast(),
-                ptr::null(),
-                0,
-                &mut status,
-            ));
         }
         BRK_LOCALE_STR_NUM.set(locale_str_num);
     }
 
-    if BRK_ITER.get().is_null() {
-        panic!("failed to create linebreak iterator, status={}", status);
-    }
-
-    ubrk_setText(BRK_ITER.get(), text, text_len, &mut status);
+    let _ = BRK_ITER.with_borrow_mut(|b| b.as_mut().unwrap().set_text(text));
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn linebreak_next() -> libc::c_int {
-    if !BRK_ITER.get().is_null() {
-        ubrk_next(BRK_ITER.get())
-    } else {
-        findNextGraphiteBreak()
-    }
+pub unsafe extern "C" fn linebreak_next(engine: XeTeXLayoutEngine) -> libc::c_int {
+    let engine = &mut *engine;
+    BRK_ITER.with_borrow_mut(|b| {
+        if let Some(iter) = b {
+            iter.next()
+        } else {
+            engine.find_next_graphite_break() as libc::c_int
+        }
+    })
 }
 
 #[no_mangle]
@@ -118,33 +107,32 @@ pub unsafe extern "C" fn get_encoding_mode_and_info(info: *mut i32) -> libc::c_i
      * Check if it's a built-in name; if not, try to open an ICU converter by that name
      */
     *info = 0;
-    let file_name = file_name().to_bytes();
-    if file_name.eq_ignore_ascii_case(b"auto") {
+    let file_name = file_name();
+    let file_name_b = file_name.to_bytes();
+    if file_name_b.eq_ignore_ascii_case(b"auto") {
         AUTO
-    } else if file_name.eq_ignore_ascii_case(b"utf8") {
+    } else if file_name_b.eq_ignore_ascii_case(b"utf8") {
         UTF8
-    } else if file_name.eq_ignore_ascii_case(b"utf16") {
+    } else if file_name_b.eq_ignore_ascii_case(b"utf16") {
         US_NATIVE_UTF16
-    } else if file_name.eq_ignore_ascii_case(b"utf16be") {
+    } else if file_name_b.eq_ignore_ascii_case(b"utf16be") {
         UTF16BE
-    } else if file_name.eq_ignore_ascii_case(b"utf16le") {
+    } else if file_name_b.eq_ignore_ascii_case(b"utf16le") {
         UTF16LE
-    } else if file_name.eq_ignore_ascii_case(b"bytes") {
+    } else if file_name_b.eq_ignore_ascii_case(b"bytes") {
         RAW
     } else {
-        let mut err = U_ZERO_ERROR;
-        let cnv = ucnv_open(file_name.as_ptr().cast(), &mut err);
-        if cnv.is_null() {
+        let cnv = icu::Converter::new(file_name);
+        if cnv.is_err() {
             begin_diagnostic();
             print_nl(b'U' as i32); /* ensure message starts on a new line */
             print_str(b"nknown encoding `");
-            print_str(file_name);
+            print_str(file_name_b);
             print_str(b"'; reading as raw bytes");
             end_diagnostic(true);
             RAW
         } else {
-            ucnv_close(cnv);
-            *info = maketexstring(file_name.as_ptr().cast());
+            *info = maketexstring(file_name_b.as_ptr().cast());
             ICUMAPPING
         }
     }
@@ -166,7 +154,7 @@ fn rs_read_double(s: &mut &[u8]) -> f64 {
         cp = &cp[1..];
     }
 
-    while (b'0'..=b'9').contains(&cp[0]) {
+    while cp[0].is_ascii_digit() {
         val = val * 10.0 + (cp[0] - b'0') as f64;
         cp = &cp[1..];
     }
@@ -174,8 +162,8 @@ fn rs_read_double(s: &mut &[u8]) -> f64 {
     if cp[0] == b'.' {
         let mut dec = 10.0;
         cp = &cp[1..];
-        while (b'0'..=b'9').contains(&cp[0]) {
-            val = val + (cp[0] - b'0') as f64 / dec;
+        while cp[0].is_ascii_digit() {
+            val += (cp[0] - b'0') as f64 / dec;
             cp = &cp[1..];
             dec *= 10.0;
         }
@@ -193,7 +181,7 @@ fn rs_read_double(s: &mut &[u8]) -> f64 {
 pub fn read_rgb_a(cp: &mut &[u8]) -> u32 {
     let mut rgb_value: u32 = 0;
     let mut alpha = 0;
-    for i in 0..6 {
+    for _ in 0..6 {
         if cp[0].is_ascii_digit() {
             rgb_value = (rgb_value << 4) + (cp[0] - b'0') as u32;
         } else if (b'A'..=b'F').contains(&cp[0]) {
@@ -209,7 +197,7 @@ pub fn read_rgb_a(cp: &mut &[u8]) -> u32 {
     let mut broken = false;
     for _ in 0..2 {
         if cp[0].is_ascii_digit() {
-            alpha = alpha << 4 + (cp[0] - b'0');
+            alpha = (alpha << 4) + (cp[0] - b'0');
         } else if (b'A'..=b'F').contains(&cp[0]) {
             alpha = (alpha << 4) + (cp[0] - b'A' + 10);
         } else if (b'a'..=b'f').contains(&cp[0]) {
@@ -247,7 +235,7 @@ pub unsafe extern "C" fn read_double(s: *mut *const libc::c_char) -> f64 {
         cp = cp.add(1);
     }
 
-    while (b'0'..=b'9').contains(&*cp) {
+    while (*cp).is_ascii_digit() {
         val = val * 10.0 + (*cp - b'0') as f64;
         cp = cp.add(1);
     }
@@ -255,8 +243,8 @@ pub unsafe extern "C" fn read_double(s: *mut *const libc::c_char) -> f64 {
     if *cp == b'.' {
         let mut dec = 10.0;
         cp = cp.add(1);
-        while (b'0'..=b'9').contains(&*cp) {
-            val = val + (*cp - b'0') as f64 / dec;
+        while (*cp).is_ascii_digit() {
+            val += (*cp - b'0') as f64 / dec;
             cp = cp.add(1);
             dec *= 10.0;
         }
@@ -270,22 +258,14 @@ pub unsafe extern "C" fn read_double(s: *mut *const libc::c_char) -> f64 {
     }
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn readFeatureNumber(
-    s: *const libc::c_char,
-    e: *const libc::c_char,
-    f: *mut hb::Tag,
-    v: *mut libc::c_int,
-) -> bool {
-    let len = e as usize - s as usize;
-    let mut str = slice::from_raw_parts(s.cast(), len);
+pub fn read_feature_number(mut str: &[u8], f: &mut hb::Tag, v: &mut u32) -> bool {
     let mut tag = (*f).to_raw();
 
     if str[0] < b'0' || str[0] > b'9' {
         return false;
     }
 
-    while (b'0'..=b'9').contains(&str[0]) {
+    while str[0].is_ascii_digit() {
         tag = tag * 10 + (str[0] - b'0') as u32;
         str = &str[1..];
     }
@@ -303,8 +283,8 @@ pub unsafe extern "C" fn readFeatureNumber(
     if str[0] < b'0' || str[0] >= b'9' {
         return false;
     }
-    while (b'0'..=b'9').contains(&str[0]) {
-        *v = *v * 10 + (str[0] - b'0') as i32;
+    while str[0].is_ascii_digit() {
+        *v = *v * 10 + (str[0] - b'0') as u32;
         str = &str[1..];
     }
     while str[0] == b' ' || str[0] == b'\t' {
@@ -314,42 +294,40 @@ pub unsafe extern "C" fn readFeatureNumber(
     str.is_empty()
 }
 
-/// returns 1 to go to next_option, -1 for bad_option, 0 to continue
-#[no_mangle]
-pub unsafe extern "C" fn readCommonFeatures(
-    feat: *const libc::c_char,
-    end: *const libc::c_char,
-    extend: *mut f32,
-    slant: *mut f32,
-    embolden: *mut f32,
-    letterspace: *mut f32,
-    rgb_value: *mut u32,
-) -> libc::c_int {
-    let len = end as usize - feat as usize;
-    let feat = slice::from_raw_parts(feat.cast::<u8>(), len);
-
-    let features: &[(&[_], &dyn Fn(&[u8]) -> libc::c_int)] = &[
-        (b"mapping", &|feat| {
-            *loaded_font_mapping.get() = load_mapping_file(feat.as_ptr().cast(), end, 0);
+pub unsafe fn read_common_features(
+    feat: &[u8],
+    extend: &mut f32,
+    slant: &mut f32,
+    embolden: &mut f32,
+    letterspace: &mut f32,
+    rgb_value: &mut u32,
+) -> i8 {
+    let features: &mut [(_, &mut dyn FnMut(_) -> i8)] = &mut [
+        (b"mapping" as &[_], &mut |feat: &[u8]| {
+            *loaded_font_mapping.get() = load_mapping_file(
+                feat.as_ptr().cast(),
+                (feat.last().unwrap() as *const u8).cast(),
+                0,
+            );
             1
         }),
-        (b"extend", &|mut feat| {
+        (b"extend", &mut |mut feat| {
             *extend = rs_read_double(&mut feat) as f32;
             1
         }),
-        (b"slant", &|mut feat| {
+        (b"slant", &mut |mut feat| {
             *slant = rs_read_double(&mut feat) as f32;
             1
         }),
-        (b"embolden", &|mut feat| {
+        (b"embolden", &mut |mut feat| {
             *embolden = rs_read_double(&mut feat) as f32;
             1
         }),
-        (b"letterspace", &|mut feat| {
+        (b"letterspace", &mut |mut feat| {
             *letterspace = rs_read_double(&mut feat) as f32;
             1
         }),
-        (b"color", &|mut feat| {
+        (b"color", &mut |mut feat| {
             let s = feat;
             *rgb_value = read_rgb_a(&mut feat);
             if ptr::addr_eq(feat, &s[6..]) || ptr::addr_eq(feat, &s[8..]) {
@@ -373,6 +351,30 @@ pub unsafe extern "C" fn readCommonFeatures(
     }
 
     0
+}
+
+/// returns 1 to go to next_option, -1 for bad_option, 0 to continue
+#[no_mangle]
+pub unsafe extern "C" fn readCommonFeatures(
+    feat: *const libc::c_char,
+    end: *const libc::c_char,
+    extend: *mut f32,
+    slant: *mut f32,
+    embolden: *mut f32,
+    letterspace: *mut f32,
+    rgb_value: *mut u32,
+) -> libc::c_int {
+    let len = end as usize - feat as usize;
+    let feat = slice::from_raw_parts(feat.cast::<u8>(), len);
+
+    read_common_features(
+        feat,
+        &mut *extend,
+        &mut *slant,
+        &mut *embolden,
+        &mut *letterspace,
+        &mut *rgb_value,
+    ) as libc::c_int
 }
 
 #[no_mangle]
@@ -484,11 +486,260 @@ pub unsafe extern "C" fn ot_get_font_metrics(
     }
 }
 
+pub fn read_tag_with_param(mut cp: &[u8], param: &mut i32) -> hb::Tag {
+    let mut tag_end = 0;
+    while tag_end < cp.len() && ![b':', b';', b',', b'='].contains(&cp[tag_end]) {
+        tag_end += 1;
+    }
+
+    let tag = hb::Tag::from_bytes(&cp[..tag_end]);
+
+    cp = &cp[tag_end..];
+
+    if cp[0] == b'=' {
+        let mut neg = false;
+        cp = &cp[1..];
+        if cp[0] == b'-' {
+            neg = true;
+            cp = &cp[1..];
+        }
+
+        while cp[0].is_ascii_digit() {
+            *param = *param * 10 + (cp[0] - b'0') as i32;
+            cp = &cp[1..];
+        }
+        if neg {
+            *param = -*param;
+        }
+    }
+
+    tag
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn loadOTfont(
+    _: RawPlatformFontRef,
+    font: XeTeXFont,
+    scaled_size: Fixed,
+    cp1: *const libc::c_char,
+) -> XeTeXLayoutEngine {
+    let cp1 = if cp1.is_null() {
+        None
+    } else {
+        Some(CStr::from_ptr(cp1).to_bytes())
+    };
+
+    let mut font = Box::from_raw(font);
+    let mut shapers = Vec::new();
+    let mut rgb_value = 0x000000FFu32;
+    let mut extend = 1.0;
+    let mut slant = 0.0;
+    let mut embolden = 0.0;
+    let mut letterspace = 0.0;
+
+    let req_engine = FontManager::with_font_manager(|m| m.get_req_engine());
+
+    let engine = match req_engine {
+        Engine::OpenType => {
+            shapers.push(c"ot".as_ptr());
+            None
+        }
+        Engine::Graphite => {
+            shapers.push(c"graphite2".as_ptr());
+            Some(LayoutEngine::new(
+                &mut *font,
+                hb::Tag::new(0),
+                None,
+                Box::new([]),
+                vec![c"graphite2".as_ptr(), ptr::null_mut()],
+                rgb_value,
+                extend,
+                slant,
+                embolden,
+            ))
+        }
+        Engine::Default | Engine::Apple => None,
+    };
+
+    let mut script = hb::Tag::new(0);
+    let mut language = None;
+    let mut features = Vec::new();
+    /* scan the feature string (if any) */
+    if let Some(mut cp1) = cp1 {
+        while !cp1.is_empty() {
+            if cp1[0] == b':' || cp1[0] == b';' || cp1[0] == b',' {
+                cp1 = &cp1[1..];
+            }
+            while cp1[0] == b' ' || cp1[0] == b'\t' {
+                cp1 = &cp1[1..];
+            }
+            if cp1.is_empty() {
+                break;
+            }
+            let mut opt_end = 0;
+            while opt_end < cp1.len()
+                && cp1[opt_end] != b':'
+                && cp1[opt_end] != b';'
+                && cp1[opt_end] != b','
+            {
+                opt_end += 1;
+            }
+
+            let feature_handlers: &mut [(&[_], &mut dyn FnMut(&[u8]))] = &mut [
+                (b"script", &mut |val| script = hb::Tag::from_bytes(val)),
+                (b"language", &mut |val| {
+                    language = Some(Cow::Owned(CString::new(val).unwrap()))
+                }),
+                (b"shaper", &mut |val| {
+                    shapers.push(CString::new(val).unwrap().into_raw())
+                }),
+            ];
+
+            for (feat, f) in feature_handlers {
+                if cp1.starts_with(feat) {
+                    if cp1[feat.len()] != b'=' {
+                        font_feature_warning(cp1.as_ptr().cast(), opt_end as i32, ptr::null(), 0);
+                        cp1 = &cp1[opt_end..];
+                        continue;
+                    }
+                    f(&cp1[feat.len() + 1..opt_end]);
+                    cp1 = &cp1[opt_end..];
+                    continue;
+                }
+            }
+
+            let i = read_common_features(
+                &cp1[..opt_end],
+                &mut extend,
+                &mut slant,
+                &mut embolden,
+                &mut letterspace,
+                &mut rgb_value,
+            );
+            if i == 1 {
+                cp1 = &cp1[opt_end..];
+                continue;
+            } else if i == -1 {
+                font_feature_warning(cp1.as_ptr().cast(), opt_end as i32, ptr::null(), 0);
+                cp1 = &cp1[opt_end..];
+                continue;
+            }
+
+            if let Engine::Graphite = req_engine {
+                let mut tag = hb::Tag::new(0);
+                let mut value = 0;
+                if read_feature_number(&cp1[..opt_end], &mut tag, &mut value)
+                    || engine.as_ref().unwrap().find_graphite_feature(
+                        &cp1[..opt_end],
+                        &mut tag,
+                        &mut value,
+                    )
+                {
+                    features.push(hb::Feature {
+                        tag,
+                        value,
+                        start: 0,
+                        end: u32::MAX,
+                    });
+                    cp1 = &cp1[opt_end..];
+                    continue;
+                }
+            }
+
+            if cp1[0] == b'+' {
+                let mut param = 0;
+                let tag = read_tag_with_param(&cp1[1..], &mut param);
+                if param >= 0 {
+                    param += 1;
+                }
+                features.push(hb::Feature {
+                    tag,
+                    value: param as u32,
+                    start: 0,
+                    end: u32::MAX,
+                });
+                cp1 = &cp1[opt_end..];
+                continue;
+            }
+
+            if cp1[1] == b'-' {
+                let tag = hb::Tag::from_bytes(&cp1[..opt_end]);
+                features.push(hb::Feature {
+                    tag,
+                    value: 0,
+                    start: 0,
+                    end: u32::MAX,
+                });
+                cp1 = &cp1[opt_end..];
+                continue;
+            }
+
+            if cp1.starts_with(b"vertical") {
+                let mut temp_end = opt_end;
+                if [b';', b':', b','].contains(&cp1[temp_end]) {
+                    temp_end -= 1;
+                }
+                while [b'\0', b' ', b'\t'].contains(&cp1[temp_end]) {
+                    temp_end -= 1;
+                }
+                if cp1[temp_end] != b'\0' {
+                    temp_end += 1;
+                }
+                if temp_end == 8 {
+                    *loaded_font_flags.get() |= FONT_FLAGS_VERTICAL;
+                    cp1 = &cp1[opt_end..];
+                    continue;
+                }
+            }
+
+            font_feature_warning(cp1.as_ptr().cast(), opt_end as i32, ptr::null(), 0);
+            cp1 = &cp1[opt_end..];
+        }
+    }
+
+    drop(engine);
+
+    if !shapers.is_empty() {
+        shapers.push(ptr::null());
+    }
+
+    if embolden != 0.0 {
+        embolden *= (fix_to_d(scaled_size) / 100.0) as f32;
+    }
+
+    if letterspace != 0.0 {
+        *loaded_font_letter_space.get() = (letterspace / 100.0 * scaled_size as f32) as scaled_t;
+    }
+
+    if *loaded_font_flags.get() & FONT_FLAGS_COLORED == 0 {
+        rgb_value = 0x000000FF;
+    }
+
+    if *loaded_font_flags.get() & FONT_FLAGS_VERTICAL != 0 {
+        font.set_layout_dir_vertical(true);
+    }
+
+    let engine = LayoutEngine::new(
+        font,
+        script,
+        language,
+        features.into_boxed_slice(),
+        shapers,
+        rgb_value,
+        extend,
+        slant,
+        embolden,
+    );
+
+    *native_font_type_flag.get() = OTGR_FONT_FLAG as i32;
+    Box::into_raw(Box::new(engine))
+}
+
 #[allow(nonstandard_style)]
 extern "C" {
     pub fn load_mapping_file(
         s: *const libc::c_char,
         e: *const libc::c_char,
         byteMapping: libc::c_char,
-    ) -> *const libc::c_void;
+    ) -> *mut libc::c_void;
 }

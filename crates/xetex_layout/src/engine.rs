@@ -36,12 +36,12 @@ impl<T> DerefMut for MaybeBorrow<'_, T> {
 pub struct GrBreak {
     pub(crate) segment: gr::Segment,
     pub(crate) slot: gr::Slot,
-    pub(crate) text_len: libc::c_uint,
+    pub(crate) text_len: usize,
 }
 
 #[repr(C)]
-pub struct LayoutEngine {
-    font: MaybeBorrow<'static, Font>,
+pub struct LayoutEngine<F: DerefMut<Target = Font> = Box<Font>> {
+    font: F,
     script: hb::Tag,
     pub(crate) language: hb::Language,
     pub(crate) features: Box<[hb::Feature]>,
@@ -57,10 +57,10 @@ pub struct LayoutEngine {
     pub(crate) gr_breaking: Option<GrBreak>,
 }
 
-impl LayoutEngine {
+impl<F: DerefMut<Target = Font>> LayoutEngine<F> {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        font: MaybeBorrow<'static, Font>,
+        font: F,
         script: hb::Tag,
         language: Option<Cow<'static, CStr>>,
         features: Box<[hb::Feature]>,
@@ -69,7 +69,7 @@ impl LayoutEngine {
         extend: f32,
         slant: f32,
         embolden: f32,
-    ) -> LayoutEngine {
+    ) -> LayoutEngine<F> {
         let req_engine = FontManager::with_font_manager(|mgr| mgr.get_req_engine());
         LayoutEngine {
             font,
@@ -284,6 +284,159 @@ impl LayoutEngine {
         }
 
         glyph_count
+    }
+
+    pub fn find_graphite_feature(&self, str: &[u8], tag: &mut hb::Tag, v: &mut u32) -> bool {
+        *tag = hb::Tag::new(0);
+        *v = 0;
+
+        let mut idx = 0;
+        while str[idx] == b' ' || str[idx] == b'\t' {
+            idx += 1;
+        }
+        while str.get(idx).is_some_and(|c| *c != b'=') {
+            idx += 1;
+        }
+
+        match self.find_graphite_feature_named(&str[..idx]) {
+            Some(val) => *tag = hb::Tag::new(val),
+            None => return false,
+        }
+
+        idx += 1;
+        while idx < str.len() && (str[idx] == b' ' || str[idx] == b'\t') {
+            idx += 1;
+        }
+
+        if idx >= str.len() {
+            return false;
+        }
+
+        *v = self
+            .find_graphite_feature_setting_named(tag.to_raw(), &str[idx..])
+            .map(|i| i as u32)
+            .unwrap_or(u32::MAX);
+
+        *v != u32::MAX
+    }
+
+    pub fn find_graphite_feature_named(&self, name: &[u8]) -> Option<u32> {
+        let gr_face = self.font().hb_font().face().gr_face()?;
+
+        let tag = hb::Tag::from_str(std::str::from_utf8(name).unwrap()).to_raw();
+
+        for i in 0..gr_face.num_feature_refs() {
+            let feature = gr_face.feature_ref(i)?;
+            let lang_id = 0x409;
+            let label = feature.label(lang_id)?;
+
+            if &label.as_bytes()[..name.len()] == name || feature.id() == tag {
+                return Some(feature.id());
+            }
+        }
+
+        None
+    }
+
+    pub fn find_graphite_feature_setting_named(&self, id: u32, name: &[u8]) -> Option<i16> {
+        let face = self.font().hb_font().face().gr_face()?;
+
+        let tag = hb::Tag::from_str(std::str::from_utf8(name).unwrap()).to_raw();
+
+        let feature = face.find_feature_ref(id)?;
+        for i in 0..feature.num_values() {
+            let lang_id = 0x409;
+            let label = feature.value_label(i, lang_id)?;
+            if &label.as_bytes()[..name.len()] == name || feature.id() == tag {
+                return Some(feature.value(i));
+            }
+        }
+        None
+    }
+
+    pub fn init_graphite_break(&mut self, text: &[u16]) -> bool {
+        self.gr_breaking = None;
+
+        let hb_font = self.font().hb_font();
+        let hb_face = hb_font.face();
+        let Some(gr_face) = hb_face.gr_face() else {
+            return false;
+        };
+        let Some(gr_font) = gr::Font::new(hb_font.ptem(), gr_face) else {
+            return false;
+        };
+
+        let lang = self
+            .language
+            .to_string()
+            .map(hb::Tag::from_cstr)
+            .map(hb::Tag::to_raw)
+            .unwrap_or(0);
+        let mut gr_feature_values = gr_face.feature_val_for_lang(lang);
+
+        let features = &self.features;
+        for i in (0..self.features.len()).rev() {
+            let fref = gr_face.find_feature_ref(features[i].tag.to_raw());
+            if let Some(fref) = fref {
+                let _ = fref.set_feat_value(gr_feature_values.as_mut(), features[i].value as u16);
+            }
+        }
+
+        let gr_seg = gr::Segment::new(
+            gr_font.as_ref(),
+            gr_face,
+            self.script().to_raw(),
+            gr_feature_values.as_ref(),
+            text,
+        )
+        .unwrap();
+
+        self.gr_breaking = Some(GrBreak {
+            slot: gr_seg.as_ref().first_slot(),
+            segment: gr_seg,
+            text_len: text.len(),
+        });
+
+        true
+    }
+
+    pub fn find_next_graphite_break(&mut self) -> usize {
+        let Some(breaking) = &mut self.gr_breaking else {
+            return usize::MAX;
+        };
+
+        let segment = breaking.segment.as_ref();
+        if breaking.slot != segment.last_slot() {
+            let mut s = segment.next(&breaking.slot);
+            let mut ret = usize::MAX;
+
+            while let Some(slot) = s {
+                let ci = segment.cinfo(segment.index(&slot));
+                let bw = ci.break_weight();
+                if (gr::BREAK_BEFORE_WORD..gr::BREAK_NONE).contains(&bw) {
+                    breaking.slot = slot.clone();
+                    ret = ci.base();
+                } else if (gr::BREAK_NONE + 1..=gr::BREAK_WORD).contains(&bw) {
+                    breaking.slot = segment.next(&slot).unwrap();
+                    ret = ci.base() + 1;
+                }
+
+                if ret != usize::MAX {
+                    break;
+                }
+
+                s = segment.next(&slot);
+            }
+
+            if ret == usize::MAX {
+                breaking.slot = segment.last_slot();
+                breaking.text_len
+            } else {
+                ret
+            }
+        } else {
+            usize::MAX
+        }
     }
 }
 

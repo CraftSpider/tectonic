@@ -1,6 +1,7 @@
-use crate::c_api::{Fixed, PlatformFontRef};
+use crate::c_api::PlatformFontRef;
 use crate::font::Font;
 use crate::utils::{d_to_fix, fix_to_d};
+use crate::Fixed;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;

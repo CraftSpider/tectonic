@@ -8,6 +8,11 @@
 //!
 //! [Tectonic]: https://tectonic-typesetting.github.io/
 
+use crate::engine::LayoutEngine;
+use crate::font::Font;
+#[cfg(not(target_os = "macos"))]
+use tectonic_bridge_fontconfig as fc;
+
 macro_rules! cstr {
     ($lit:literal) => {
         // SAFETY: C string passed to from_ptr guaranteed to end with a null due to concat!
@@ -19,22 +24,37 @@ macro_rules! cstr {
     };
 }
 
-mod engine;
-mod font;
-mod manager;
-mod utils;
+pub mod engine;
+pub mod font;
+pub mod manager;
+pub mod utils;
 
-pub(crate) mod c_api {
-    use crate::engine::LayoutEngine;
-    use crate::font::Font;
+#[cfg(not(target_os = "macos"))]
+pub type Fixed = i32;
+/// cbindgen:ignore
+#[cfg(target_os = "macos")]
+pub type Fixed = u32;
+pub type OTTag = u32;
+pub type GlyphID = u16;
+/// cbindgen:ignore
+pub type XeTeXFont = *mut Font;
+/// cbindgen:ignore
+pub type XeTeXLayoutEngine = *mut LayoutEngine;
+#[cfg(not(target_os = "macos"))]
+pub type RawPlatformFontRef = *mut fc::sys::FcPattern;
+#[cfg(target_os = "macos")]
+pub type RawPlatformFontRef = tectonic_mac_core::sys::CTFontDescriptorRef;
+
+mod c_api {
+    use super::{Fixed, OTTag, XeTeXFont, XeTeXLayoutEngine};
     use std::collections::BTreeMap;
     use std::sync::Mutex;
     #[cfg(not(target_os = "macos"))]
     use tectonic_bridge_fontconfig as fc;
 
-    mod engine;
-    mod font;
-    mod manager;
+    pub mod engine;
+    pub mod font;
+    pub mod manager;
 
     #[derive(Copy, Clone, PartialEq, Debug)]
     #[repr(C)]
@@ -53,21 +73,6 @@ pub(crate) mod c_api {
         pub y_max: f32,
     }
 
-    #[cfg(not(target_os = "macos"))]
-    pub type Fixed = i32;
-    /// cbindgen:ignore
-    #[cfg(target_os = "macos")]
-    pub type Fixed = u32;
-    pub type OTTag = u32;
-    pub type GlyphID = u16;
-    /// cbindgen:ignore
-    pub type XeTeXFont = *mut Font;
-    /// cbindgen:ignore
-    pub type XeTeXLayoutEngine = *mut LayoutEngine;
-    #[cfg(not(target_os = "macos"))]
-    pub(crate) type RawPlatformFontRef = *mut fc::sys::FcPattern;
-    #[cfg(target_os = "macos")]
-    pub(crate) type RawPlatformFontRef = tectonic_mac_core::sys::CTFontDescriptorRef;
     /// cbindgen:ignore
     #[cfg(not(target_os = "macos"))]
     pub(crate) type PlatformFontRef = fc::Pattern;

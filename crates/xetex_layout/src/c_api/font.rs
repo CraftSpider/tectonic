@@ -1,6 +1,7 @@
-use crate::c_api::{Fixed, OTTag, RawPlatformFontRef, XeTeXFont};
+use crate::c_api::{Fixed, OTTag, XeTeXFont};
 use crate::font::{get_larger_script_list_table_ot, Font};
 use crate::utils::{d_to_fix, fix_to_d, raw_to_rs};
+use crate::RawPlatformFontRef;
 use std::ffi::{CStr, CString};
 use std::ptr;
 use tectonic_bridge_freetype2 as ft;
