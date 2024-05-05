@@ -6,9 +6,10 @@ use crate::c_api::engine::{
     begin_diagnostic, end_diagnostic, file_name, font_area, font_feature_warning,
     font_layout_engine, font_mapping_warning, get_tracing_fonts_state, loaded_font_flags,
     loaded_font_letter_space, loaded_font_mapping, memory_word, name_of_file,
-    native_font_type_flag, print_char, print_int, print_nl, print_raw_char, print_str,
+    native_font_type_flag, print_raw_char,
 };
 use crate::c_api::mfmp::{get_tex_str, maketexstring};
+use crate::c_api::output::{print_char, print_int, print_nl, print_str};
 use crate::teckit::{
     kForm_Bytes, TECkit_ConvertBuffer, TECkit_CreateConverter, TECkit_ResetConverter, UniChar,
 };

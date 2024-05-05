@@ -50,12 +50,6 @@ pub union memory_word {
     pub ptr: *mut (),
 }
 
-pub fn print_str(s: &[u8]) {
-    for c in s {
-        unsafe { print_char(*c as i32) };
-    }
-}
-
 pub unsafe fn file_name() -> &'static CStr {
     let ptr = *name_of_file.get();
     CStr::from_ptr(ptr)
@@ -70,9 +64,6 @@ extern "C" {
         warningType: i32,
     );
     pub fn begin_diagnostic();
-    pub fn print_nl(s: i32);
-    pub fn print_char(c: i32);
-    pub fn print_int(n: i32);
     pub fn end_diagnostic(blank_line: bool);
     pub fn font_feature_warning(
         featureNameP: *const libc::c_void,
@@ -90,4 +81,10 @@ extern "C" {
     pub static font_layout_engine: UnsafeCell<*mut *mut ()>;
     pub static native_font_type_flag: UnsafeCell<i32>;
     pub static name_of_file: UnsafeCell<*mut libc::c_char>;
+    pub static arith_error: UnsafeCell<bool>;
+    pub static tex_remainder: UnsafeCell<scaled_t>;
+    pub static help_ptr: UnsafeCell<libc::c_char>;
+    pub static help_line: UnsafeCell<[*const libc::c_char; 6]>;
+    pub static randoms: UnsafeCell<[i32; 55]>;
+    pub static j_random: UnsafeCell<libc::c_uchar>;
 }

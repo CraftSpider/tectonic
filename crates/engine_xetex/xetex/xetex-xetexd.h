@@ -454,8 +454,6 @@ extern scaled_t tex_remainder;
 extern int32_t randoms[55];
 extern unsigned char j_random;
 extern scaled_t random_seed;
-extern int32_t two_to_the[31];
-extern int32_t spec_log[29];
 extern int32_t temp_ptr;
 extern memory_word *mem;
 extern int32_t lo_mem_max;
