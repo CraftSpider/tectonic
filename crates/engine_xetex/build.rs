@@ -189,7 +189,6 @@ const C_FILES: &[&str] = &[
     "xetex/xetex-output.c",
     "xetex/xetex-pagebuilder.c",
     "xetex/xetex-pic.c",
-    "xetex/xetex-scaledmath.c",
     "xetex/xetex-shipout.c",
     "xetex/xetex-stringpool.c",
     "xetex/xetex-synctex.c",

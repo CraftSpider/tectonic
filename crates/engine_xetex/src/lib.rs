@@ -241,15 +241,24 @@ impl TexEngine {
 
 #[doc(hidden)]
 pub mod c_api {
+    macro_rules! c {
+        ($lit:literal) => {
+            ::std::ptr::from_ref(concat!($lit, "\0")).cast::<::libc::c_char>()
+        };
+    }
+
     // If you change the interfaces here, rerun cbindgen as described in the README!
 
     use tectonic_bridge_core::CoreBridgeState;
 
     pub mod core;
     pub mod engine;
+    pub mod errors;
     pub mod ext;
     pub mod math;
     pub mod mfmp;
+    pub mod output;
+    pub mod scaled_math;
 
     /// cbindgen:ignore
     #[allow(improper_ctypes)] // for CoreBridgeState

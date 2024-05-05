@@ -99,6 +99,20 @@ extern char *gettexstring(int32_t s);
 
 extern int32_t maketexstring(const char *s);
 
+int32_t tex_round(double r);
+
+int32_t half(int32_t x);
+
+scaled_t mult_and_add(int32_t n, scaled_t x, scaled_t y, scaled_t max_answer);
+
+scaled_t x_over_n(scaled_t x, int32_t n);
+
+scaled_t xn_over_d(scaled_t x, int32_t n, int32_t d);
+
+scaled_t round_xn_over_d(scaled_t x, int32_t n, int32_t d);
+
+int32_t make_frace(int32_t p, int32_t q);
+
 #ifdef __cplusplus
 } // extern "C"
 #endif // __cplusplus
