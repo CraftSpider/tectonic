@@ -1,19 +1,26 @@
 use crate::c_api::core::{
-    scaled_t, AUTO, FONT_FLAGS_COLORED, FONT_FLAGS_VERTICAL, ICUMAPPING, RAW, US_NATIVE_UTF16,
-    UTF16BE, UTF16LE, UTF8,
+    scaled_t, UTF16Code, AUTO, FONT_FLAGS_COLORED, FONT_FLAGS_VERTICAL, ICUMAPPING, RAW,
+    US_NATIVE_UTF16, UTF16BE, UTF16LE, UTF16_NATIVE, UTF8,
 };
 use crate::c_api::engine::{
     begin_diagnostic, end_diagnostic, file_name, font_area, font_feature_warning,
-    font_layout_engine, loaded_font_flags, loaded_font_letter_space, loaded_font_mapping,
-    memory_word, native_font_type_flag, print_int, print_nl, print_str,
+    font_layout_engine, font_mapping_warning, get_tracing_fonts_state, loaded_font_flags,
+    loaded_font_letter_space, loaded_font_mapping, memory_word, name_of_file,
+    native_font_type_flag, print_char, print_int, print_nl, print_raw_char, print_str,
 };
 use crate::c_api::mfmp::{get_tex_str, maketexstring};
+use crate::teckit::{
+    kForm_Bytes, TECkit_ConvertBuffer, TECkit_CreateConverter, TECkit_ResetConverter, UniChar,
+};
+use memchr::memmem;
 use std::borrow::Cow;
 use std::cell::{Cell, RefCell};
 use std::ffi::{CStr, CString};
-use std::{ptr, slice};
+use std::{mem, ptr, slice};
+use tectonic_bridge_core::FileFormat;
 use tectonic_bridge_harfbuzz as hb;
 use tectonic_bridge_icu as icu;
+use tectonic_io_base::InputHandle;
 use tectonic_xetex_layout::engine::LayoutEngine;
 use tectonic_xetex_layout::manager::{Engine, FontManager};
 use tectonic_xetex_layout::{Fixed, GlyphID, RawPlatformFontRef, XeTeXFont, XeTeXLayoutEngine};
@@ -24,6 +31,7 @@ pub const OTGR_FONT_FLAG: u32 = 0xFFFE;
 thread_local! {
     static BRK_ITER: RefCell<Option<icu::BreakIterator>> = const { RefCell::new(None) };
     static BRK_LOCALE_STR_NUM: Cell<i32> = const { Cell::new(0) };
+    static SAVED_MAPPING_NAME: Cell<*mut libc::c_char> = const { Cell::new(ptr::null_mut()) };
 }
 
 unsafe fn native_glyph_count(node: *mut memory_word) -> u16 {
@@ -36,6 +44,39 @@ fn d_to_fix(d: f64) -> Fixed {
 
 fn fix_to_d(f: Fixed) -> f64 {
     f as f64 / 65536.0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn print_utf8_str(str: *const u8, len: libc::c_int) {
+    for i in 0..len as usize {
+        /* bypass utf-8 encoding done in print_char() */
+        print_raw_char(*str.add(i) as UTF16Code, true)
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn print_chars(str: *const libc::c_ushort, len: libc::c_int) {
+    for i in 0..len as usize {
+        /* bypass utf-8 encoding done in print_char() */
+        print_char(*str.add(i) as libc::c_int)
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn check_for_tfm_font_mapping() {
+    let ptr = *name_of_file.get();
+    let len = CStr::from_ptr(ptr).to_bytes().len();
+    let cp = slice::from_raw_parts_mut(ptr.cast::<u8>(), len);
+    if let Some(mut pos) = memmem::find(cp, b":mapping=") {
+        cp[pos] = 0;
+        pos += 9;
+        while pos < cp.len() && cp[pos] <= b' ' {
+            pos += 1;
+        }
+        if pos < cp.len() {
+            SAVED_MAPPING_NAME.set(libc::strdup(cp.as_ptr().cast()))
+        }
+    }
 }
 
 #[no_mangle]
@@ -89,8 +130,10 @@ pub unsafe extern "C" fn linebreak_start(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn linebreak_next(engine: XeTeXLayoutEngine) -> libc::c_int {
-    let engine = &mut *engine;
+pub unsafe extern "C" fn linebreak_next(f: libc::c_int) -> libc::c_int {
+    let engine = &mut *(*font_layout_engine.get())
+        .add(f as usize)
+        .cast::<LayoutEngine>();
     BRK_ITER.with_borrow_mut(|b| {
         if let Some(iter) = b {
             iter.next()
@@ -304,11 +347,9 @@ pub unsafe fn read_common_features(
 ) -> i8 {
     let features: &mut [(_, &mut dyn FnMut(_) -> i8)] = &mut [
         (b"mapping" as &[_], &mut |feat: &[u8]| {
-            *loaded_font_mapping.get() = load_mapping_file(
-                feat.as_ptr().cast(),
-                (feat.last().unwrap() as *const u8).cast(),
-                0,
-            );
+            *loaded_font_mapping.get() = load_mapping_file(feat, 0)
+                .cast::<libc::c_void>()
+                .cast_const();
             1
         }),
         (b"extend", &mut |mut feat| {
@@ -443,14 +484,14 @@ pub unsafe extern "C" fn splitFontName(
 
 #[no_mangle]
 pub unsafe extern "C" fn ot_get_font_metrics(
-    engine: XeTeXLayoutEngine,
+    engine: *mut libc::c_void,
     ascent: *mut scaled_t,
     descent: *mut scaled_t,
     xheight: *mut scaled_t,
     capheight: *mut scaled_t,
     slant: *mut scaled_t,
 ) {
-    let engine = &mut *engine;
+    let engine = &mut *engine.cast::<LayoutEngine>();
 
     *ascent = d_to_fix(engine.font().ascent() as f64);
     *descent = d_to_fix(engine.font().descent() as f64);
@@ -735,11 +776,107 @@ pub unsafe extern "C" fn loadOTfont(
     Box::into_raw(Box::new(engine))
 }
 
-#[allow(nonstandard_style)]
+#[no_mangle]
+pub unsafe fn load_mapping_file(str: &[u8], byte_mapping: u8) -> *mut () {
+    let mut cnv = ptr::null_mut();
+    let mut buffer = str.to_vec();
+    buffer.extend(b".tec");
+    let buffer = CString::new(buffer).unwrap();
+
+    let map = ttstub_input_open(buffer.as_ptr(), FileFormat::MiscFonts, 0);
+    if !map.is_null() {
+        let mapping_size = ttstub_input_get_size(map);
+        let mut mapping = vec![0u8; mapping_size];
+        let r = ttstub_input_read(map, mapping.as_mut_ptr(), mapping_size);
+        if r < 0 || r as usize != mapping_size {
+            panic!("could not read mapping file \"{:?}\"", buffer);
+        }
+
+        ttstub_input_close(map);
+
+        if byte_mapping != 0 {
+            TECkit_CreateConverter(
+                mapping.as_mut_ptr(),
+                mapping_size as u32,
+                false as u8,
+                UTF16_NATIVE,
+                kForm_Bytes,
+                &mut cnv,
+            );
+        } else {
+            TECkit_CreateConverter(
+                mapping.as_mut_ptr(),
+                mapping_size as u32,
+                true as u8,
+                UTF16_NATIVE,
+                UTF16_NATIVE,
+                &mut cnv,
+            );
+        }
+
+        if cnv.is_null() {
+            font_mapping_warning(buffer.as_ptr().cast(), buffer.to_bytes().len() as i32, 2);
+        /* not loadable */
+        } else if get_tracing_fonts_state() > 1 {
+            font_mapping_warning(buffer.as_ptr().cast(), buffer.to_bytes().len() as i32, 0);
+            /* tracing */
+        }
+    } else {
+        font_mapping_warning(buffer.as_ptr().cast(), buffer.to_bytes().len() as i32, 1);
+        /* not found */
+    }
+
+    cnv.cast()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn load_tfm_font_mapping() -> *mut libc::c_void {
+    if !SAVED_MAPPING_NAME.get().is_null() {
+        let out = load_mapping_file(CStr::from_ptr(SAVED_MAPPING_NAME.get()).to_bytes(), 1);
+        libc::free(SAVED_MAPPING_NAME.get().cast());
+        SAVED_MAPPING_NAME.set(ptr::null_mut());
+        out.cast()
+    } else {
+        ptr::null_mut()
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn apply_tfm_font_mapping(
+    cnv: *mut libc::c_void,
+    c: libc::c_int,
+) -> libc::c_int {
+    let input: UniChar = c as UniChar;
+    let mut output = [0u8; 2];
+    let mut in_used = 0;
+    let mut out_used = 0;
+    TECkit_ConvertBuffer(
+        cnv.cast(),
+        ptr::from_ref(&input).cast(),
+        mem::size_of::<UniChar>() as u32,
+        &mut in_used,
+        output.as_mut_ptr(),
+        2,
+        &mut out_used,
+        1,
+    );
+    TECkit_ResetConverter(cnv.cast());
+    if out_used < 1 {
+        0
+    } else {
+        output[0] as libc::c_int
+    }
+}
+
+/// cbindgen:ignore
+#[allow(nonstandard_style, improper_ctypes)]
 extern "C" {
-    pub fn load_mapping_file(
-        s: *const libc::c_char,
-        e: *const libc::c_char,
-        byteMapping: libc::c_char,
-    ) -> *mut libc::c_void;
+    pub fn ttstub_input_open(
+        path: *const libc::c_char,
+        format: FileFormat,
+        is_gz: libc::c_int,
+    ) -> *mut InputHandle;
+    pub fn ttstub_input_get_size(inp: *mut InputHandle) -> usize;
+    pub fn ttstub_input_read(inp: *mut InputHandle, arr: *mut u8, len: usize) -> isize;
+    pub fn ttstub_input_close(inp: *mut InputHandle) -> libc::c_int;
 }

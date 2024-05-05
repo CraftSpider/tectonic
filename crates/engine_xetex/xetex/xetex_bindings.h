@@ -44,28 +44,15 @@ typedef int32_t scaled_t;
 extern "C" {
 #endif // __cplusplus
 
-extern void font_mapping_warning(const void *mappingNameP,
-                                 int32_t mappingNameLen,
-                                 int32_t warningType);
+void print_utf8_str(const uint8_t *str, int len);
 
-extern void begin_diagnostic(void);
+void print_chars(const unsigned short *str, int len);
 
-extern void print_nl(int32_t s);
-
-extern void print_char(int32_t c);
-
-extern void print_int(int32_t n);
-
-extern void end_diagnostic(bool blank_line);
-
-extern void font_feature_warning(const void *featureNameP,
-                                 int32_t featLen,
-                                 const void *settingNameP,
-                                 int32_t setLen);
+void check_for_tfm_font_mapping(void);
 
 void linebreak_start(int f, int32_t locale_str_num, uint16_t *text, int32_t text_len);
 
-int linebreak_next(XeTeXLayoutEngine engine);
+int linebreak_next(int f);
 
 int get_encoding_mode_and_info(int32_t *info);
 
@@ -88,7 +75,7 @@ void splitFontName(const char *name,
                    const char **end,
                    int *index);
 
-void ot_get_font_metrics(XeTeXLayoutEngine engine,
+void ot_get_font_metrics(void *engine,
                          scaled_t *ascent,
                          scaled_t *descent,
                          scaled_t *xheight,
@@ -100,7 +87,13 @@ XeTeXLayoutEngine loadOTfont(RawPlatformFontRef,
                              Fixed scaled_size,
                              const char *cp1);
 
-extern void *load_mapping_file(const char *s, const char *e, char byteMapping);
+void *load_tfm_font_mapping(void);
+
+int apply_tfm_font_mapping(void *cnv, int c);
+
+float glyph_height(int f, int g);
+
+float glyph_depth(int f, int g);
 
 extern char *gettexstring(int32_t s);
 

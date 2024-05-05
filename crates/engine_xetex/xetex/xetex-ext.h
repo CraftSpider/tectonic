@@ -106,18 +106,9 @@ typedef struct {
 
 BEGIN_EXTERN_C
 
-void linebreak_start(int f, int32_t localeStrNum, uint16_t* text, int32_t textLength);
-int linebreak_next(int f);
-int get_encoding_mode_and_info(int32_t* info);
-void print_utf8_str(const unsigned char* str, int len);
-void print_chars(const unsigned short* str, int len);
 void* find_native_font(char* name, int32_t scaled_size);
 void release_font_engine(void* engine, int type_flag);
-int readCommonFeatures(const char* feat, const char* end, float* extend,
-                       float* slant, float* embolden, float* letterspace, uint32_t* rgbValue);
 
-void ot_get_font_metrics(void* engine, scaled_t* ascent, scaled_t* descent, scaled_t* xheight,
-                         scaled_t* capheight, scaled_t* slant);
 void get_native_char_height_depth(int32_t font, int32_t ch, scaled_t* height, scaled_t* depth);
 void get_native_char_sidebearings(int32_t font, int32_t ch, scaled_t* lsb, scaled_t* rsb);
 
@@ -153,9 +144,6 @@ void gr_print_font_name(int32_t what, void* pEngine, int32_t param1, int32_t par
 int32_t gr_font_get_named(int32_t what, void* pEngine);
 int32_t gr_font_get_named_1(int32_t what, void* pEngine, int32_t param);
 
-double read_double(const char** s);
-unsigned int read_rgb_a(const char** cp);
-
 int count_pdf_file_pages(void);
 
 int maketexstring(const char* s);
@@ -163,8 +151,6 @@ double Fix2D(Fixed f);
 Fixed D2Fix(double d);
 
 void check_for_tfm_font_mapping(void);
-void* load_tfm_font_mapping(void);
-int apply_tfm_font_mapping(void* mapping, int c);
 
 int aat_font_get(int what, CFDictionaryRef attrs);
 int aat_font_get_1(int what, CFDictionaryRef attrs, int param);

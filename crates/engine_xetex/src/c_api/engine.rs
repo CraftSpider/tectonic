@@ -39,7 +39,7 @@ mod defs {
     }
 }
 
-use crate::c_api::core::scaled_t;
+use crate::c_api::core::{scaled_t, UTF16Code};
 pub use defs::*;
 
 #[repr(C)]
@@ -61,6 +61,7 @@ pub unsafe fn file_name() -> &'static CStr {
     CStr::from_ptr(ptr)
 }
 
+/// cbindgen:ignore
 #[allow(nonstandard_style)]
 extern "C" {
     pub fn font_mapping_warning(
@@ -79,6 +80,8 @@ extern "C" {
         settingNameP: *const libc::c_void,
         setLen: i32,
     );
+    pub fn get_tracing_fonts_state() -> i32;
+    pub fn print_raw_char(s: UTF16Code, incr_offset: bool);
 
     pub static loaded_font_flags: UnsafeCell<libc::c_char>;
     pub static loaded_font_mapping: UnsafeCell<*const libc::c_void>;

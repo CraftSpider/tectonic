@@ -24,6 +24,9 @@ use std::{ffi::CString, time::SystemTime};
 use tectonic_bridge_core::{CoreBridgeLauncher, EngineAbortedError};
 use tectonic_errors::prelude::*;
 
+/// cbindgen:ignore
+mod teckit;
+
 /// A serial number describing the detailed binary layout of the TeX "format
 /// files" used by this crate. This number will occasionally increment,
 /// indicating that the format file structure has changed. There is no provision
@@ -245,6 +248,7 @@ pub mod c_api {
     pub mod core;
     pub mod engine;
     pub mod ext;
+    pub mod math;
     pub mod mfmp;
 
     /// cbindgen:ignore
