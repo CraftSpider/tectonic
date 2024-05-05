@@ -20,6 +20,7 @@ links = "tectonic_engine_xetex"
 
 [dependencies]
 libc = "^0.2"
+memchr = "2.7"
 tectonic_bridge_core = { path = "../bridge_core", version = "0.0.0-dev.0" }
 tectonic_bridge_flate = { path = "../bridge_flate", version = "0.0.0-dev.0" }
 tectonic_bridge_graphite2 = { path = "../bridge_graphite2", version = "0.0.0-dev.0" }
@@ -27,6 +28,7 @@ tectonic_bridge_harfbuzz = { path = "../bridge_harfbuzz", version = "0.0.0-dev.0
 tectonic_bridge_icu = { path = "../bridge_icu", version = "0.0.0-dev.0" }
 tectonic_errors = { path = "../errors", version = "0.0.0-dev.0" }
 tectonic_pdf_io = { path = "../pdf_io", version = "0.0.0-dev.0" }
+tectonic_io_base = { path = "../io_base", version = "0.0.0-dev.0" }
 tectonic_xetex_layout = { path = "../xetex_layout", version = "0.0.0-dev.0" }
 
 [build-dependencies]
@@ -49,3 +51,4 @@ tectonic_cfg_support = "9d5feb40c7ac6958ee3c50604af9271eb2db2b20"
 tectonic_errors = "317ae79ceaa2593fb56090e37bf1f5cc24213dd9"
 tectonic_pdf_io = "9a8b975e76c7a27f140d0974ec3442f2347e18ad"
 tectonic_xetex_layout = "7e63f1b55da1b75c159dd7138c08f3e6c4e43e9c"
+tectonic_io_base = "41168a9fa2902401afc79e60bbefa638bde6df2d"

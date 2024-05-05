@@ -37,6 +37,7 @@ authorization from the copyright holders.
 #include <algorithm>
 
 #include "tectonic_xetex_layout.h"
+#include "xetex_bindings.h"
 #include "xetex-XeTeXOTMath.h"
 
 int
@@ -293,32 +294,6 @@ getMathKernAt(int f, int g, int height, hb_ot_math_kern_t side)
     if (font_area[f] == OTGR_FONT_FLAG) {
         hb_font_t *hbFont = ttxl_get_hb_font((XeTeXLayoutEngine) font_layout_engine[f]);
         rval = hb_ot_math_get_glyph_kerning(hbFont, g, side, height);
-    }
-
-    return rval;
-}
-
-static float
-glyph_height(int f, int g)
-{
-    float rval = 0.0;
-
-    if (font_area[f] == OTGR_FONT_FLAG) {
-        XeTeXLayoutEngine engine = (XeTeXLayoutEngine)font_layout_engine[f];
-        getGlyphHeightDepth(engine, g, &rval, NULL);
-    }
-
-    return rval;
-}
-
-static float
-glyph_depth(int f, int g)
-{
-    float rval = 0.0;
-
-    if (font_area[f] == OTGR_FONT_FLAG) {
-        XeTeXLayoutEngine engine = (XeTeXLayoutEngine)font_layout_engine[f];
-        getGlyphHeightDepth(engine, g, NULL, &rval);
     }
 
     return rval;

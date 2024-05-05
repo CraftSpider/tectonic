@@ -2810,6 +2810,7 @@ version = "0.0.0-dev.0"
 dependencies = [
  "cc",
  "libc",
+ "memchr",
  "tectonic_bridge_core",
  "tectonic_bridge_flate",
  "tectonic_bridge_graphite2",
@@ -2817,6 +2818,7 @@ dependencies = [
  "tectonic_bridge_icu",
  "tectonic_cfg_support",
  "tectonic_errors",
+ "tectonic_io_base",
  "tectonic_pdf_io",
  "tectonic_xetex_layout",
 ]
