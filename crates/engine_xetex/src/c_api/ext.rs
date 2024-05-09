@@ -35,8 +35,14 @@ thread_local! {
     static SAVED_MAPPING_NAME: Cell<*mut libc::c_char> = const { Cell::new(ptr::null_mut()) };
 }
 
-unsafe fn native_glyph_count(node: *mut memory_word) -> u16 {
+#[no_mangle]
+pub unsafe extern "C" fn native_glyph_count(node: *mut memory_word) -> u16 {
     (*node.add(NATIVE_INFO_OFFSET)).b16.s0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn set_native_glyph_count(node: *mut memory_word, val: u16) {
+    (*node.add(NATIVE_INFO_OFFSET)).b16.s0 = val;
 }
 
 fn d_to_fix(d: f64) -> Fixed {
@@ -65,7 +71,7 @@ pub unsafe extern "C" fn print_chars(str: *const libc::c_ushort, len: libc::c_in
 
 #[no_mangle]
 pub unsafe extern "C" fn check_for_tfm_font_mapping() {
-    let ptr = *name_of_file.get();
+    let ptr = *name_of_file;
     let len = CStr::from_ptr(ptr).to_bytes().len();
     let cp = slice::from_raw_parts_mut(ptr.cast::<u8>(), len);
     if let Some(mut pos) = memmem::find(cp, b":mapping=") {
@@ -90,10 +96,8 @@ pub unsafe extern "C" fn linebreak_start(
     let locale = get_tex_str(locale_str_num);
     let text = slice::from_raw_parts(text, text_len as usize);
 
-    if *(*font_area.get()).add(f as usize) as u32 == OTGR_FONT_FLAG && locale.to_bytes() == b"G" {
-        let engine = (*font_layout_engine.get())
-            .add(f as usize)
-            .cast::<LayoutEngine>();
+    if font_area[f as usize] as u32 == OTGR_FONT_FLAG && locale.to_bytes() == b"G" {
+        let engine = font_layout_engine[f as usize].cast::<LayoutEngine>();
         if (*engine).init_graphite_break(text) {
             return;
         }
@@ -132,9 +136,7 @@ pub unsafe extern "C" fn linebreak_start(
 
 #[no_mangle]
 pub unsafe extern "C" fn linebreak_next(f: libc::c_int) -> libc::c_int {
-    let engine = &mut *(*font_layout_engine.get())
-        .add(f as usize)
-        .cast::<LayoutEngine>();
+    let engine = &mut *font_layout_engine[f as usize].cast::<LayoutEngine>();
     BRK_ITER.with_borrow_mut(|b| {
         if let Some(iter) = b {
             iter.next()
@@ -348,7 +350,7 @@ pub unsafe fn read_common_features(
 ) -> i8 {
     let features: &mut [(_, &mut dyn FnMut(_) -> i8)] = &mut [
         (b"mapping" as &[_], &mut |feat: &[u8]| {
-            *loaded_font_mapping.get() = load_mapping_file(feat, 0)
+            *loaded_font_mapping = load_mapping_file(feat, 0)
                 .cast::<libc::c_void>()
                 .cast_const();
             1
@@ -373,7 +375,7 @@ pub unsafe fn read_common_features(
             let s = feat;
             *rgb_value = read_rgb_a(&mut feat);
             if ptr::addr_eq(feat, &s[6..]) || ptr::addr_eq(feat, &s[8..]) {
-                *loaded_font_flags.get() |= FONT_FLAGS_COLORED;
+                *loaded_font_flags |= FONT_FLAGS_COLORED;
                 1
             } else {
                 -1
@@ -583,17 +585,17 @@ pub unsafe extern "C" fn loadOTfont(
 
     let engine = match req_engine {
         Engine::OpenType => {
-            shapers.push(c"ot".as_ptr());
+            shapers.push(c!("ot"));
             None
         }
         Engine::Graphite => {
-            shapers.push(c"graphite2".as_ptr());
+            shapers.push(c!("graphite2"));
             Some(LayoutEngine::new(
                 &mut *font,
                 hb::Tag::new(0),
                 None,
                 Box::new([]),
-                vec![c"graphite2".as_ptr(), ptr::null_mut()],
+                vec![c!("graphite2"), ptr::null_mut()],
                 rgb_value,
                 extend,
                 slant,
@@ -728,7 +730,7 @@ pub unsafe extern "C" fn loadOTfont(
                     temp_end += 1;
                 }
                 if temp_end == 8 {
-                    *loaded_font_flags.get() |= FONT_FLAGS_VERTICAL;
+                    *loaded_font_flags |= FONT_FLAGS_VERTICAL;
                     cp1 = &cp1[opt_end..];
                     continue;
                 }
@@ -750,14 +752,14 @@ pub unsafe extern "C" fn loadOTfont(
     }
 
     if letterspace != 0.0 {
-        *loaded_font_letter_space.get() = (letterspace / 100.0 * scaled_size as f32) as scaled_t;
+        *loaded_font_letter_space = (letterspace / 100.0 * scaled_size as f32) as scaled_t;
     }
 
-    if *loaded_font_flags.get() & FONT_FLAGS_COLORED == 0 {
+    if *loaded_font_flags & FONT_FLAGS_COLORED == 0 {
         rgb_value = 0x000000FF;
     }
 
-    if *loaded_font_flags.get() & FONT_FLAGS_VERTICAL != 0 {
+    if *loaded_font_flags & FONT_FLAGS_VERTICAL != 0 {
         font.set_layout_dir_vertical(true);
     }
 
@@ -773,7 +775,7 @@ pub unsafe extern "C" fn loadOTfont(
         embolden,
     );
 
-    *native_font_type_flag.get() = OTGR_FONT_FLAG as i32;
+    *native_font_type_flag = OTGR_FONT_FLAG as i32;
     Box::into_raw(Box::new(engine))
 }
 

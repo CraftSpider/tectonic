@@ -34,15 +34,92 @@
 
 #define ICUMAPPING 5
 
+#define BIGGEST_CHAR 65535
+
+#define BIGGEST_USV 1114111
+
+#define INT_BASE 7826729
+
+#define INT_PAR__new_line_char 49
+
+#define INT_PAR__escape_char 45
+
 #define NATIVE_INFO_OFFSET 4
 
 #define OTGR_FONT_FLAG 65534
 
+#define PRIM_SIZE 2100
+
+#define ACTIVE_BASE 1
+
+#define SINGLE_BASE 1114113
+
+#define NULL_CS 2228225
+
+#define HASH_BASE 2228226
+
+#define PRIM_EQTB_BASE 2254339
+
+#define FROZEN_NULL_FONT 2243238
+
+#define UNDEFINED_CONTROL_SEQUENCE 2254339
+
+#define CAT_CODE_BASE 2256169
+
+#define EQTB_SIZE 8941458
+
+#define LETTER 11
+
+#if defined(WORDS_BIGENDIAN)
+typedef struct {
+  int32_t s1;
+  int32_t s0;
+} b32x2;
+#endif
+
+#if !defined(WORDS_BIGENDIAN)
+typedef struct {
+  int32_t s0;
+  int32_t s1;
+} b32x2;
+#endif
+
+#if defined(WORDS_BIGENDIAN)
+typedef struct {
+  uint16_t s3;
+  uint16_t s2;
+  uint16_t s1;
+  uint16_t s0;
+} b16x4;
+#endif
+
+#if !defined(WORDS_BIGENDIAN)
+typedef struct {
+  uint16_t s0;
+  uint16_t s1;
+  uint16_t s2;
+  uint16_t s3;
+} b16x4;
+#endif
+
+typedef union {
+  b32x2 b32;
+  b16x4 b16;
+  double gr;
+  void *ptr;
+} memory_word;
+
 typedef int32_t scaled_t;
+
+typedef unsigned short UTF16Code;
 
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
+
+uint16_t native_glyph_count(memory_word *node);
+
+void set_native_glyph_count(memory_word *node, uint16_t val);
 
 void print_utf8_str(const uint8_t *str, int len);
 
@@ -99,6 +176,44 @@ extern char *gettexstring(int32_t s);
 
 extern int32_t maketexstring(const char *s);
 
+void capture_to_diagnostic(ttbc_diagnostic_t *diagnostic);
+
+void diagnostic_print_file_line(ttbc_diagnostic_t *diagnostic);
+
+ttbc_diagnostic_t *diagnostic_begin_capture_warning_here(void);
+
+ttbc_diagnostic_t *error_here_with_diagnostic(const char *message);
+
+void warn_char(int c);
+
+void print_ln(void);
+
+void print_raw_char(UTF16Code s, bool incr_offset);
+
+void print_char(int32_t s);
+
+void print(int32_t s);
+
+void print_cstr(const char *str);
+
+void print_nl(int32_t s);
+
+void print_nl_cstr(const char *str);
+
+void print_esc(int32_t s);
+
+void print_esc_cstr(const char *str);
+
+void print_the_digs(uint8_t k);
+
+void print_int(int32_t n);
+
+void print_cs(int32_t p);
+
+void sprint_cs(int32_t p);
+
+void print_file_name(int32_t n, int32_t a, int32_t e);
+
 int32_t tex_round(double r);
 
 int32_t half(int32_t x);
@@ -111,7 +226,11 @@ scaled_t xn_over_d(scaled_t x, int32_t n, int32_t d);
 
 scaled_t round_xn_over_d(scaled_t x, int32_t n, int32_t d);
 
-int32_t make_frace(int32_t p, int32_t q);
+void init_randoms(int32_t seed);
+
+int32_t unif_rand(int32_t x);
+
+int32_t norm_rand(void);
 
 #ifdef __cplusplus
 } // extern "C"

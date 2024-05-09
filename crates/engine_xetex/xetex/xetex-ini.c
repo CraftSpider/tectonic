@@ -86,8 +86,6 @@ unsigned char help_ptr;
 bool use_err_help;
 bool arith_error;
 scaled_t tex_remainder;
-int32_t randoms[55];
-unsigned char j_random;
 scaled_t random_seed;
 int32_t temp_ptr;
 memory_word *mem;

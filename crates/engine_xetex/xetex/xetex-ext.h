@@ -87,7 +87,7 @@ typedef void* CFDictionaryRef; /* dummy declaration just so the stubs can compil
 #define node_height(node)           node[height_offset].b32.s1
 #define native_length(node)         node[native_info_offset].b16.s1
 #define native_font(node)           node[native_info_offset].b16.s2
-#define native_glyph_count(node)    node[native_info_offset].b16.s0
+//#define native_glyph_count(node)    node[native_info_offset].b16.s0
 #define native_glyph_info_ptr(node) node[native_glyph_info_offset].ptr
 #define native_glyph_info_size      10 /* info for each glyph is location (FixedPoint) + glyph ID (uint16_t) */
 

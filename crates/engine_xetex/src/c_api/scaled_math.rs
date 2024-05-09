@@ -1,10 +1,10 @@
 use crate::c_api::core::scaled_t;
-use crate::c_api::engine::{arith_error, help_line, help_ptr, j_random, randoms, tex_remainder};
+use crate::c_api::engine::{arith_error, help_line, help_ptr, tex_remainder};
 use crate::c_api::errors::error;
 use crate::c_api::output::{
     capture_to_diagnostic, error_here_with_diagnostic, print_scaled, print_str,
 };
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::{mem, ptr};
 
 pub const TWO_TO_THE: [i32; 31] = {
@@ -42,6 +42,7 @@ const SPEC_LOG: [i32; 29] = {
 };
 
 thread_local! {
+    static RANDOMS: RefCell<[i32; 55]> = const { RefCell::new([0; 55]) };
     static J_RANDOM: Cell<usize> = const { Cell::new(0) };
 }
 
@@ -109,7 +110,7 @@ pub unsafe extern "C" fn mult_and_add(
     } else if x <= (max_answer - y) / n && -x <= (max_answer + y) / n {
         n * x + y
     } else {
-        *arith_error.get() = true;
+        *arith_error = true;
         0
     }
 }
@@ -117,17 +118,17 @@ pub unsafe extern "C" fn mult_and_add(
 #[no_mangle]
 pub unsafe extern "C" fn x_over_n(x: scaled_t, n: i32) -> scaled_t {
     if n < 0 {
-        *tex_remainder.get() = -*tex_remainder.get();
+        *tex_remainder = -*tex_remainder;
         x_over_n(-x, -n)
     } else if n == 0 {
-        *arith_error.get() = true;
-        *tex_remainder.get() = x;
+        *arith_error = true;
+        *tex_remainder = x;
         0
     } else if x >= 0 {
-        *tex_remainder.get() = x % n;
+        *tex_remainder = x % n;
         x / n
     } else {
-        *tex_remainder.get() = -(-x % n);
+        *tex_remainder = -(-x % n);
         -(-x / n)
     }
 }
@@ -148,16 +149,16 @@ pub unsafe extern "C" fn xn_over_d(mut x: scaled_t, n: i32, d: i32) -> scaled_t 
     let v = (u % d) * MAGIC + (t % MAGIC);
 
     if u / d >= MAGIC {
-        *arith_error.get() = true;
+        *arith_error = true;
     } else {
         u = MAGIC * (u / d) + (v / d);
     }
 
     if positive {
-        *tex_remainder.get() = v % d;
+        *tex_remainder = v % d;
         u
     } else {
-        *tex_remainder.get() = -(v % d);
+        *tex_remainder = -(v % d);
         -u
     }
 }
@@ -178,7 +179,7 @@ pub unsafe extern "C" fn round_xn_over_d(mut x: scaled_t, n: i32, d: i32) -> sca
     let mut v = (u % d) * MAGIC + (t % MAGIC);
 
     if u / d >= MAGIC {
-        *arith_error.get() = true;
+        *arith_error = true;
     } else {
         u = MAGIC * (u / d) + (v / d);
     }
@@ -211,7 +212,7 @@ unsafe fn make_frac(mut p: i32, mut q: i32) -> i32 {
     let mut p = p % q;
 
     if n >= 8 {
-        *arith_error.get() = true;
+        *arith_error = true;
         if negative {
             -0x7FFFFFFF
         } else {
@@ -272,7 +273,7 @@ unsafe fn take_frac(mut q: i32, mut f: i32) -> i32 {
         if q <= 0x7FFFFFFF / n {
             n = n * q;
         } else {
-            *arith_error.get() = true;
+            *arith_error = true;
             n = 0x7FFFFFFF;
         }
     }
@@ -308,7 +309,7 @@ unsafe fn take_frac(mut q: i32, mut f: i32) -> i32 {
 
     let be_careful = n - 0x7FFFFFFF;
     if be_careful + p > 0 {
-        *arith_error.get() = true;
+        *arith_error = true;
         n = 0x7FFFFFFF - p;
     }
 
@@ -325,8 +326,8 @@ unsafe fn m_log(mut x: i32) -> i32 {
         print_scaled(x);
         print_str(b" has been replaced by 0");
         capture_to_diagnostic(ptr::null_mut());
-        *help_ptr.get() = 2;
-        let help_line_m = &mut *help_line.get();
+        *help_ptr = 2;
+        let help_line_m = &mut *help_line;
         help_line_m[1] = c!("Since I don't take logs of non-positive numbers,");
         help_line_m[0] = c!("I'm zeroing this one. Proceed, with fingers crossed.");
         error();
@@ -424,23 +425,21 @@ fn ab_vs_cd(mut a: i32, mut b: i32, mut c: i32, mut d: i32) -> i32 {
     }
 }
 
-unsafe fn new_randoms() {
-    let randoms_ = &mut *randoms.get();
-
+unsafe fn new_randoms(randoms: &mut [i32; 55]) {
     for k in 0..24 {
-        let mut x = randoms_[k] - randoms_[k + 31];
+        let mut x = randoms[k] - randoms[k + 31];
         if x < 0 {
             x += 0x10000000;
         }
-        randoms_[k] = x;
+        randoms[k] = x;
     }
 
     for k in 24..55 {
-        let mut x = randoms_[k] - randoms_[k - 24];
+        let mut x = randoms[k] - randoms[k - 24];
         if x < 0 {
             x += 0x10000000;
         }
-        randoms_[k] = x;
+        randoms[k] = x;
     }
 
     J_RANDOM.set(54);
@@ -454,80 +453,82 @@ pub unsafe extern "C" fn init_randoms(seed: i32) {
         j /= 2;
     }
 
-    let mut k = 1;
+    RANDOMS.with_borrow_mut(|randoms| {
+        let mut k = 1;
 
-    let randoms_ = &mut *randoms.get();
-    for i in 0..55 {
-        let jj = k;
-        k = j - k;
-        j = jj;
-        if k < 0 {
-            k += 0x10000000;
+        for i in 0..55 {
+            let jj = k;
+            k = j - k;
+            j = jj;
+            if k < 0 {
+                k += 0x10000000;
+            }
+            randoms[(i * 21) % 55] = j;
         }
-        randoms_[(i * 21) % 55] = j;
-    }
 
-    new_randoms();
-    new_randoms();
-    new_randoms();
+        new_randoms(randoms);
+        new_randoms(randoms);
+        new_randoms(randoms);
+    });
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn unif_rand(x: i32) -> i32 {
-    if J_RANDOM.get() == 0 {
-        new_randoms();
-    } else {
-        J_RANDOM.set(J_RANDOM.get() - 1);
-    }
+    RANDOMS.with_borrow_mut(|randoms| {
+        if J_RANDOM.get() == 0 {
+            new_randoms(randoms);
+        } else {
+            J_RANDOM.set(J_RANDOM.get() - 1);
+        }
 
-    let randoms_ = &mut *randoms.get();
-    let y = take_frac(x.abs(), randoms_[J_RANDOM.get()]);
-    if y == x.abs() {
-        0
-    } else if x > 0 {
-        y
-    } else {
-        -y
-    }
+        let y = take_frac(x.abs(), randoms[J_RANDOM.get()]);
+        if y == x.abs() {
+            0
+        } else if x > 0 {
+            y
+        } else {
+            -y
+        }
+    })
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn norm_rand() -> i32 {
-    let mut x = 0;
-    let mut u = 0;
+    RANDOMS.with_borrow_mut(|randoms| {
+        let mut x;
+        let mut u;
 
-    loop {
         loop {
-            if J_RANDOM.get() == 0 {
-                new_randoms();
-            } else {
-                J_RANDOM.set(J_RANDOM.get() - 1);
+            loop {
+                if J_RANDOM.get() == 0 {
+                    new_randoms(randoms);
+                } else {
+                    J_RANDOM.set(J_RANDOM.get() - 1);
+                }
+
+                x = take_frac(112429, randoms[J_RANDOM.get()] - 0x08000000);
+
+                if J_RANDOM.get() == 0 {
+                    new_randoms(randoms);
+                } else {
+                    J_RANDOM.set(J_RANDOM.get() - 1);
+                }
+
+                u = randoms[J_RANDOM.get()];
+
+                if x.abs() < u {
+                    break;
+                }
             }
 
-            let randoms_ = &mut *randoms.get();
-            x = take_frac(112429, randoms_[J_RANDOM.get()] - 0x08000000);
+            x = make_frac(x, u);
+            let l = 139548960 - m_log(u);
 
-            if J_RANDOM.get() == 0 {
-                new_randoms();
-            } else {
-                J_RANDOM.set(J_RANDOM.get() - 1);
-            }
-
-            let randoms_ = &mut *randoms.get();
-            u = randoms_[J_RANDOM.get()];
-
-            if x.abs() < u {
+            if ab_vs_cd(1024, l, x, x) >= 0 {
                 break;
             }
         }
 
-        x = make_frac(x, u);
-        let l = 139548960 - m_log(u);
-
-        if ab_vs_cd(1024, l, x, x) >= 0 {
-            break;
-        }
-    }
-
-    x
+        x
+    })
 }

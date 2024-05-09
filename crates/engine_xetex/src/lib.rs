@@ -239,6 +239,7 @@ impl TexEngine {
     }
 }
 
+#[allow(improper_ctypes, unused_doc_comments)] // for core bridge types
 #[doc(hidden)]
 pub mod c_api {
     macro_rules! c {
@@ -255,13 +256,13 @@ pub mod c_api {
     pub mod engine;
     pub mod errors;
     pub mod ext;
+    pub mod format;
     pub mod math;
     pub mod mfmp;
     pub mod output;
     pub mod scaled_math;
 
     /// cbindgen:ignore
-    #[allow(improper_ctypes)] // for CoreBridgeState
     extern "C" {
         pub fn tt_xetex_set_int_variable(
             var_name: *const libc::c_char,
