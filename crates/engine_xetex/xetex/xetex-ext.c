@@ -954,7 +954,7 @@ measure_native_node(void* pNode, int use_glyph_metrics)
             }
 
             node_width(node) = D2Fix(width);
-            native_glyph_count(node) = totalGlyphCount;
+            set_native_glyph_count(node, totalGlyphCount);
             native_glyph_info_ptr(node) = glyph_info;
         } else {
             double width = 0;
@@ -984,7 +984,7 @@ measure_native_node(void* pNode, int use_glyph_metrics)
             }
 
             node_width(node) = D2Fix(width);
-            native_glyph_count(node) = totalGlyphCount;
+            set_native_glyph_count(node, totalGlyphCount);
             native_glyph_info_ptr(node) = glyph_info;
 
             free(glyphs);

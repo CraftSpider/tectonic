@@ -4,9 +4,8 @@ use tectonic_xetex_layout::engine::LayoutEngine;
 
 #[no_mangle]
 pub unsafe extern "C" fn glyph_height(f: libc::c_int, g: libc::c_int) -> f32 {
-    if *(*font_area.get()).add(f as usize) == OTGR_FONT_FLAG as i32 {
-        let (height, _) = (*font_layout_engine.get())
-            .add(f as usize)
+    if font_area[f as usize] == OTGR_FONT_FLAG as i32 {
+        let (height, _) = font_layout_engine[f as usize]
             .cast::<LayoutEngine>()
             .as_mut()
             .unwrap()
@@ -20,9 +19,8 @@ pub unsafe extern "C" fn glyph_height(f: libc::c_int, g: libc::c_int) -> f32 {
 
 #[no_mangle]
 pub unsafe extern "C" fn glyph_depth(f: libc::c_int, g: libc::c_int) -> f32 {
-    if *(*font_area.get()).add(f as usize) == OTGR_FONT_FLAG as i32 {
-        let (_, depth) = (*font_layout_engine.get())
-            .add(f as usize)
+    if font_area[f as usize] == OTGR_FONT_FLAG as i32 {
+        let (_, depth) = font_layout_engine[f as usize]
             .cast::<LayoutEngine>()
             .as_mut()
             .unwrap()

@@ -7,7 +7,12 @@ include_guard = "TECTONIC_ENGINE_XETEX_BINDGEN_H"
 "CoreBridgeState" = "ttbc_state_t"
 "Tag" = "hb_tag_t"
 "InputHandle" = "ttbc_input_handle_t"
+"OutputHandle" = "ttbc_output_handle_t"
+"Diagnostic" = "ttbc_diagnostic_t"
 "FileFormat" = "ttbc_file_format"
+
+[defines]
+"target_endian = big" = "WORDS_BIGENDIAN"
 
 [enum]
 prefix_with_name = true

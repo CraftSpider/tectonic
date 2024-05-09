@@ -10,6 +10,7 @@
 #include "xetex-XeTeXOTMath.h"
 #include "teckit-Common.h"
 #include "xetex-ext.h"
+#include "xetex_bindings.h"
 #include "tectonic_bridge_core.h"
 
 /* xetex_format.h needs this: */
@@ -51,149 +52,24 @@ typedef short small_number;
 typedef unsigned char two_choices;
 typedef unsigned char four_choices;
 
-/* The annoying `memory_word` type. We have to make sure the byte-swapping
- * that the (un)dumping routines do suffices to put things in the right place
- * in memory.
- *
- * This set of data used to be a huge mess (see comment after the
- * definitions). It is now (IMO) a lot more reasonable, but there will no
- * doubt be carryover weird terminology around the code.
- *
- * ## ENDIANNESS (cheat sheet because I'm lame)
- *
- * Intel is little-endian. Say that we have a 32-bit integer stored in memory
- * with `p` being a `uint8` pointer to its location. In little-endian land,
- * `p[0]` is least significant byte and `p[3]` is its most significant byte.
- *
- * Conversely, in big-endian land, `p[0]` is its most significant byte and
- * `p[3]` is its least significant byte.
- *
- * ## MEMORY_WORD LAYOUT
- *
- * Little endian:
- *
- *   bytes: --0-- --1-- --2-- --3-- --4-- --5-- --6-- --7--
- *   b32:   [lsb......s0.......msb] [lsb......s1.......msb]
- *   b16:   [l..s0...m] [l..s1...m] [l..s2...m] [l..s3...m]
- *
- * Big endian:
- *
- *   bytes: --0-- --1-- --2-- --3-- --4-- --5-- --6-- --7--
- *   b32:   [msb......s1.......lsb] [msb......s0.......lsb]
- *   b16:   [m..s3...l] [m..s2...l] [m..s1...l] [m...s0..l]
- *
- */
+//#ifdef WORDS_BIGENDIAN
+//
+//typedef struct b32x2_be_t { int32_t s1, s0; } b32x2;
+//typedef struct b16x4_be_t { uint16_t s3, s2, s1, s0; } b16x4;
+//
+//#else
+//
+//typedef struct b32x2_le_t { int32_t s0, s1; } b32x2;
+//typedef struct b16x4_le_t { uint16_t s0, s1, s2, s3; } b16x4;
+//
+//#endif /*WORDS_BIGENDIAN*/
 
-#ifdef WORDS_BIGENDIAN
-
-typedef struct b32x2_be_t { int32_t s1, s0; } b32x2;
-typedef struct b16x4_be_t { uint16_t s3, s2, s1, s0; } b16x4;
-
-#else
-
-typedef struct b32x2_le_t { int32_t s0, s1; } b32x2;
-typedef struct b16x4_le_t { uint16_t s0, s1, s2, s3; } b16x4;
-
-#endif /*WORDS_BIGENDIAN*/
-
-typedef union {
-    b32x2 b32;
-    b16x4 b16;
-    double gr;
-    void *ptr;
-} memory_word;
-
-/* ## THE ORIGINAL SITUATION (archived for posterity)
- *
- * In XeTeX, a "quarterword" is 16 bits. Who knows why. A "halfword" is,
- * sensibly, 32 bits. A "memory word" is a full word: either four quarters or
- * two halves: i.e., 64 bits. The memory word union also has options for
- * doubles (called `gr`), `integer` which is an int32_t (called `cint`), and a
- * pointer (`ptr`).
- *
- * Original struct definition, LITTLE ENDIAN (condensed):
- *
- *   typedef union {
- *       struct { int32_t LH, RH; } v;
- *       struct { short B1, B0; } u;
- *   } two_halves;
- *
- *   typedef struct {
- *       struct { uint16_t B3, B2, B1, B0; } u;
- *   } four_quarters;
- *
- *   typedef union {
- *       two_halves hh;
- *
- *       struct {
- *           int32_t junk;
- *           int32_t CINT;
- *       } u;
- *
- *       struct {
- *           four_quarters QQQQ;
- *       } v;
- *   } memory_word;
- *
- *   #  define cint u.CINT
- *   #  define qqqq v.QQQQ
- *
- * Original memory layout, LITTLE ENDIAN:
- *
- *   bytes:    --0-- --1-- --2-- --3-- --4-- --5-- --6-- --7--
- *   cint:                             [lsb...............msb]
- *   hh.u:     [l..B1...m] [l..B0...m]
- *   hh.v:     [lsb......LH.......msb] [lsb......RH.......msb]
- *   quarters: [l..B3...m] [l..B2...m] [l..B1...m] [l..B0...m]
- *
- * Original struct definition, BIG ENDIAN (condensed):
- *
- *   typedef union {
- *       struct { int32_t RH, LH; } v;
- *       struct {
- *           int32_t junk;
- *           short B0, B1;
- *       } u;
- *   } two_halves;
- *
- *   typedef struct {
- *       struct { uint16_t B0, B1, B2, B3; } u;
- *   } four_quarters;
- *
- *   typedef union {
- *       two_halves hh;
- *       four_quarters qqqq;
- *   } memory_word;
- *
- * Original memory layout, BIG ENDIAN:
- *
- *   bytes:    --0-- --1-- --2-- --3-- --4-- --5-- --6-- --7--
- *   cint:     [msb...............lsb]
- *   hh.u:                             [m..B0...l] [m..B1...l]
- *   hh.v:     [msb......RH.......lsb] [msb......LH.......lsb]
- *   quarters: [m..B0...l] [m..B1...l] [m..B2...l] [m...B3..l]
- *
- * Several things to note that apply to both endiannesses:
- *
- *   1. The different B0 and B1 instances do not line up.
- *   2. `cint` is isomorphic to `hh.v.RH`
- *   3. `hh.u.B0` is isomorphic to `qqqq.u.B2`
- *   4. `hh.u.B1` is isomorphic to `qqqq.u.B3`.
- *   5. The `four_quarters` field `u` serves no discernable purpose.
- *
- * CONVERTING TO THE NEW SYSTEM
- *
- * - `w.cint` => `w.b32.s1`
- * - `w.qqqq.u.B<n>` => `w.b16.s{{3 - <n>}}` !!!!!!!!!!!
- * - similar for `<quarterword_variable>.u.B<n>` => `<quarterword_variable>.s{{3 - <n>}}` !!!
- * - `w.hh.u.B0` => `w.b16.s1`
- * - `w.hh.u.B1` => `w.b16.s0`
- * - `w.hh.v.RH` => `w.b32.s1`
- * - `w.hh.v.LH` => `w.b32.s0`
- * - `four_quarters` => `b16x4`
- * - `two_halves` => `b32x2`
- *
- */
+//typedef union {
+//    b32x2 b32;
+//    b16x4 b16;
+//    double gr;
+//    void *ptr;
+//} memory_word;
 
 /* Symbolic accessors for various TeX data structures. I would loooove to turn these
  * into actual structs, but the path to doing that is not currently clear. Making
@@ -451,8 +327,6 @@ extern unsigned char help_ptr;
 extern bool use_err_help;
 extern bool arith_error;
 extern scaled_t tex_remainder;
-extern int32_t randoms[55];
-extern unsigned char j_random;
 extern scaled_t random_seed;
 extern int32_t temp_ptr;
 extern memory_word *mem;
