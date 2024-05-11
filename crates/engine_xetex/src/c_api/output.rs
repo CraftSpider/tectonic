@@ -1,9 +1,12 @@
-use crate::c_api::core::{scaled_t, Selector, UTF16Code, BIGGEST_CHAR, BIGGEST_USV};
+use crate::c_api::core::{
+    scaled_t, Selector, UTF16Code, BIGGEST_CHAR, BIGGEST_USV, DIMEN_VAL_LIMIT,
+};
 use crate::c_api::engine::{
     cat_code, dig, doing_special, eqtb_top, error_line, file_line_error_style_p, file_offset,
-    full_source_filename_stack, hash, in_open, intpar, line, line_stack, log_file, max_print_line,
-    pool_ptr, pool_size, prim, rust_stdout, selector, set_intpar, str_pool, str_ptr, str_start,
-    tally, term_offset, trick_buf, trick_count, write_file,
+    full_source_filename_stack, hash, in_open, intpar, line, line_stack, llist_link, log_file,
+    max_print_line, mem, native_node_text, pool_ptr, pool_size, prim, rust_stdout, selector,
+    set_intpar, str_pool, str_ptr, str_start, tally, term_offset, trick_buf, trick_count,
+    write_file,
 };
 use crate::c_api::format::{
     ACTIVE_BASE, EQTB_SIZE, FROZEN_NULL_FONT, HASH_BASE, LETTER, NULL_CS, PRIM_EQTB_BASE,
@@ -508,25 +511,76 @@ pub unsafe extern "C" fn print_write_whatsit(s: *const libc::c_char, p: i32) {
     print_esc_cstr(s);
 
     if mem[(p + 1) as usize].b32.s0 < 16 {
-        print_int(mem[(p + 1)])
+        print_int(mem[(p + 1) as usize].b32.s0)
+    } else if mem[(p + 1) as usize].b32.s0 == 16 {
+        print_char('*' as i32);
+    } else {
+        print_char('-' as i32);
     }
 }
 
-/*
-void
-print_write_whatsit(const char* s, int32_t p)
-{
+#[no_mangle]
+pub unsafe extern "C" fn print_native_word(p: i32) {
+    let p = p as usize;
+    let for_end = mem[p + 4].b16.s1 - 1;
 
-    print_esc_cstr(s);
-
-    if (mem[p + 1].b32.s0 < 16)
-        print_int(mem[p + 1].b32.s0);
-    else if (mem[p + 1].b32.s0 == 16)
-        print_char('*');
-    else
-        print_char('-');
+    let mut range = 0..for_end as usize;
+    while let Some(i) = range.next() {
+        let c = native_node_text(p)[i] as i32;
+        if c >= 0xD800 && c < 0xDC00 {
+            if i < (mem[p + 4].b16.s1 - 1) as usize {
+                let cc = native_node_text(p)[i + 1] as i32;
+                if cc >= 0xDC00 && cc < 0xE000 {
+                    let c = 0x10000 + (c - 0xD800) * 1024 + (cc - 0xDC00);
+                    print_char(c);
+                    range.next();
+                } else {
+                    print('.' as i32);
+                }
+            } else {
+                print('.' as i32);
+            }
+        } else {
+            print_char(c);
+        }
+    }
 }
- */
+
+#[no_mangle]
+pub unsafe extern "C" fn print_sa_num(q: i32) {
+    /*
+        void
+    print_sa_num(int32_t q)
+    {
+        int32_t n;
+
+        if (mem[q].b16.s1 < DIMEN_VAL_LIMIT)
+            n = mem[q + 1].b32.s1;
+        else {
+            n = mem[q].b16.s1 % 64;
+            q = LLIST_link(q);
+            n = n + 64 * mem[q].b16.s1;
+            q = LLIST_link(q);
+            n = n + 64 * 64 * (mem[q].b16.s1 + 64 * mem[mem[q].b32.s1].b16.s1);
+        }
+
+        print_int(n);
+    }
+         */
+
+    let q = q as usize;
+    let n = if (mem[q].b16.s1 as usize) < DIMEN_VAL_LIMIT {
+        mem[q + 1].b32.s1
+    } else {
+        let n = mem[q].b16.s1 % 64;
+        let q = llist_link(q) as usize;
+        let n = n as i32 + 64 * mem[q].b16.s1 as i32;
+        let q = llist_link(q) as usize;
+        n + 64 * 64 * (mem[q].b16.s1 as i32 + 64 * mem[mem[q].b32.s1 as usize].b16.s1 as i32)
+    };
+
+    print_int(n);
+}
 
 /// cbindgen:ignore
 extern "C" {
