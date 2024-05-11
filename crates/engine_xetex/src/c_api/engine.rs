@@ -3,6 +3,7 @@
 use std::cell::UnsafeCell;
 use std::ffi::CStr;
 use std::ops::{Deref, DerefMut, Index, IndexMut};
+use std::ptr;
 
 pub const INT_BASE: usize = 0x776d29;
 
@@ -47,7 +48,7 @@ mod defs {
     }
 }
 
-use crate::c_api::core::{scaled_t, Selector, UTF16Code};
+use crate::c_api::core::{scaled_t, Selector, UTF16Code, NATIVE_NODE_SIZE};
 use crate::c_api::format::{CAT_CODE_BASE, PRIM_SIZE};
 pub use defs::*;
 use tectonic_io_base::OutputHandle;
@@ -211,6 +212,25 @@ pub unsafe fn cat_code(n: usize) -> i32 {
     eqtb[CAT_CODE_BASE + n].b32.s1
 }
 
+/* Symbolic accessors for various TeX data structures. I would loooove to turn these
+ * into actual structs, but the path to doing that is not currently clear. Making
+ * field references symbolic seems like a decent start. Sadly I don't see how to do
+ * this conversion besides painstakingly annotating things.
+ */
+
+pub unsafe fn llist_link(p: usize) -> i32 {
+    mem[p].b32.s1
+}
+
+pub unsafe fn llist_info(p: usize) -> i32 {
+    mem[p].b32.s0
+}
+
+pub unsafe fn native_node_text<'a>(p: usize) -> CArr<u16> {
+    let ptr = ptr::from_mut(&mut mem[p + NATIVE_NODE_SIZE]).cast();
+    CArr(ptr)
+}
+
 #[repr(transparent)]
 pub struct CArr<T>(*mut T);
 
@@ -302,4 +322,5 @@ extern "C" {
     pub static eqtb_top: DangerCell<i32>;
     pub static hash: DangerCell<CArr<b32x2>>;
     pub static prim: DangerCell<[b32x2; PRIM_SIZE + 1]>;
+    pub static mut mem: DangerCell<CArr<memory_word>>;
 }

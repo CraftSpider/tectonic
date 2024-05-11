@@ -22,6 +22,9 @@ pub const UTF16_NATIVE: u16 = if cfg!(target_endian = "big") {
 
 pub const BIGGEST_CHAR: i32 = 0xFFFF;
 pub const BIGGEST_USV: i32 = 0x10FFFF;
+pub const DIMEN_VAL_LIMIT: usize = 256;
+
+pub const NATIVE_NODE_SIZE: usize = 6;
 
 #[allow(nonstandard_style)]
 pub type scaled_t = i32;

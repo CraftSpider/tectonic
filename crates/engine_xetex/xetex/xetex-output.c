@@ -9,50 +9,6 @@
 #include "tectonic_bridge_core.h"
 
 void
-print_native_word(int32_t p)
-{
-    int32_t i, c, cc;
-    int32_t for_end = mem[p + 4].b16.s1 - 1;
-
-    for (i = 0; i <= for_end; i++) {
-        c = NATIVE_NODE_text(p)[i];
-        if ((c >= 0xD800) && (c < 0xDC00)) {
-            if (i < mem[p + 4].b16.s1 - 1) {
-                cc = NATIVE_NODE_text(p)[i + 1];
-                if ((cc >= 0xDC00) && (cc < 0xE000)) {
-                    c = 0x10000 + (c - 0xD800) * 1024 + (cc - 0xDC00);
-                    print_char(c);
-                    i++;
-                } else
-                    print('.');
-            } else
-                print('.');
-        } else
-            print_char(c);
-    }
-}
-
-
-void
-print_sa_num(int32_t q)
-{
-    int32_t n;
-
-    if (mem[q].b16.s1 < DIMEN_VAL_LIMIT)
-        n = mem[q + 1].b32.s1;
-    else {
-        n = mem[q].b16.s1 % 64;
-        q = LLIST_link(q);
-        n = n + 64 * mem[q].b16.s1;
-        q = LLIST_link(q);
-        n = n + 64 * 64 * (mem[q].b16.s1 + 64 * mem[mem[q].b32.s1].b16.s1);
-    }
-
-    print_int(n);
-}
-
-
-void
 print_file_line(void)
 {
     int32_t level = in_open;

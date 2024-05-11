@@ -38,6 +38,10 @@
 
 #define BIGGEST_USV 1114111
 
+#define DIMEN_VAL_LIMIT 256
+
+#define NATIVE_NODE_SIZE 6
+
 #define INT_BASE 7826729
 
 #define INT_PAR__new_line_char 49
@@ -69,6 +73,12 @@
 #define EQTB_SIZE 8941458
 
 #define LETTER 11
+
+#define TEXT_SIZE 0
+
+#define SCRIPT_SIZE 256
+
+#define SCRIPT_SCRIPT_SIZE 512
 
 #if defined(WORDS_BIGENDIAN)
 typedef struct {
@@ -213,6 +223,14 @@ void print_cs(int32_t p);
 void sprint_cs(int32_t p);
 
 void print_file_name(int32_t n, int32_t a, int32_t e);
+
+void print_size(int32_t s);
+
+void print_write_whatsit(const char *s, int32_t p);
+
+void print_native_word(int32_t p);
+
+void print_sa_num(int32_t q);
 
 int32_t tex_round(double r);
 
