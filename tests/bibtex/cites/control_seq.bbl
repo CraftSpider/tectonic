@@ -1,0 +1,11 @@
+\begin{thebibliography}{1}
+
+\bibitem{OtherExample}
+{\.I}~{\'e}~{\^o}.
+\newblock {\em A book with more sequences}.
+
+\bibitem{SequenceExample}
+{\i}~{\j} {\oe} {\OE} {\ae} {\AE} {\aa} {\AA} {\o} {\O}~{\l} {\L}~{\ss}.
+\newblock {\em A book with many sequences}.
+
+\end{thebibliography}
