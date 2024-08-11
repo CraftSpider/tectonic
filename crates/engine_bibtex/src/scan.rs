@@ -16,7 +16,7 @@ use crate::{
     peekable::input_ln,
     pool::StringPool,
     ASCIICode, Bibtex, BibtexError, BufPointer, CiteNumber, FnDefLoc, GlobalItems, HashPointer,
-    StrIlk, StrNumber,
+    StrNumber,
 };
 
 pub(crate) const QUOTE_NEXT_FN: usize = hash::HASH_BASE - 1;
@@ -193,12 +193,10 @@ fn handle_char(
 
             let str = &globals.buffers.buffer(BufTy::Base)
                 [globals.buffers.offset(BufTy::Base, 1)..globals.buffers.offset(BufTy::Base, 2)];
-            let res = globals.pool.lookup_str_insert(
-                ctx,
-                globals.hash,
-                str,
-                HashExtra::Integer(token_value),
-            )?;
+            let res =
+                globals
+                    .pool
+                    .lookup_insert::<hash::Int>(ctx, globals.hash, str, token_value)?;
 
             let char = globals.buffers.at_offset(BufTy::Base, 2);
 
@@ -227,7 +225,7 @@ fn handle_char(
                 [globals.buffers.offset(BufTy::Base, 1)..globals.buffers.offset(BufTy::Base, 2)];
             let res = globals
                 .pool
-                .lookup_str_insert(ctx, globals.hash, str, HashExtra::Text)?;
+                .lookup_insert::<hash::Text>(ctx, globals.hash, str, ())?;
 
             globals
                 .buffers
@@ -261,9 +259,9 @@ fn handle_char(
             globals.buffers.buffer_mut(BufTy::Base)[range.clone()].make_ascii_lowercase();
 
             let str = &globals.buffers.buffer(BufTy::Base)[range];
-            let res = globals.pool.lookup_str(globals.hash, str, StrIlk::BstFn);
+            let res = globals.pool.lookup::<hash::Bst>(globals.hash, str);
 
-            if !res.exists {
+            if res.extra.is_none() {
                 return skip_token_unknown_function_print(ctx, globals.buffers, globals.pool);
             } else if res.loc == wiz_loc {
                 return print_recursion_illegal(ctx, globals.buffers, globals.pool);
@@ -279,14 +277,14 @@ fn handle_char(
 
             let str = format!("'{}", ctx.impl_fn_num);
 
-            let res = globals.pool.lookup_str_insert(
+            let res = globals.pool.lookup_insert::<hash::Bst>(
                 ctx,
                 globals.hash,
                 str.as_bytes(),
-                HashExtra::BstFn(BstFn::Wizard(0)),
+                BstFn::Wizard(0),
             )?;
 
-            if res.exists {
+            if res.extra.is_some() {
                 ctx.write_logs("Already encountered implicit function");
                 print_confusion(ctx);
                 return Err(BibtexError::Fatal);
@@ -311,8 +309,8 @@ fn handle_char(
             globals.buffers.buffer_mut(BufTy::Base)[range.clone()].make_ascii_lowercase();
 
             let str = &globals.buffers.buffer(BufTy::Base)[range];
-            let res = globals.pool.lookup_str(globals.hash, str, StrIlk::BstFn);
-            if !res.exists {
+            let res = globals.pool.lookup::<hash::Bst>(globals.hash, str);
+            if res.extra.is_none() {
                 return skip_token_unknown_function_print(ctx, globals.buffers, globals.pool);
             } else if res.loc == wiz_loc {
                 return print_recursion_illegal(ctx, globals.buffers, globals.pool);
@@ -634,7 +632,7 @@ fn scan_a_field_token_and_eat_white(
                 globals.buffers.buffer_mut(BufTy::Base)[range.clone()].make_ascii_lowercase();
                 let str = &globals.buffers.buffer(BufTy::Base)[range];
 
-                let res = globals.pool.lookup_str(globals.hash, str, StrIlk::Macro);
+                let res = globals.pool.lookup::<hash::Macro>(globals.hash, str);
                 let mut store_token = true;
                 if command == Some(BibCommand::String) && res.loc == cur_macro_loc {
                     store_token = false;
@@ -643,7 +641,7 @@ fn scan_a_field_token_and_eat_white(
                     bib_warn_print(ctx, globals.pool, globals.bibs)?;
                 }
 
-                if !res.exists {
+                if res.extra.is_none() {
                     store_token = false;
                     macro_warn_print(ctx, globals.buffers);
                     ctx.write_logs("undefined\n");
@@ -798,7 +796,7 @@ pub(crate) fn scan_and_store_the_field_value_and_eat_white(
             &globals.buffers.buffer(BufTy::Ex)[ex_buf_xptr..globals.buffers.offset(BufTy::Ex, 1)];
         let res = globals
             .pool
-            .lookup_str_insert(ctx, globals.hash, str, HashExtra::Text)?;
+            .lookup_insert::<hash::Text>(ctx, globals.hash, str, ())?;
 
         if let Some(command) = command {
             match command {
@@ -851,19 +849,14 @@ pub(crate) fn scan_and_store_the_field_value_and_eat_white(
                     );
                     globals.buffers.buffer_mut(BufTy::Out)[ex_buf_xptr..end].make_ascii_lowercase();
                     let str = &globals.buffers.buffer(BufTy::Out)[ex_buf_xptr..end];
-                    let lc_res = globals.pool.lookup_str_insert(
-                        ctx,
-                        globals.hash,
-                        str,
-                        HashExtra::LcCite(0),
-                    )?;
+                    let lc_res =
+                        globals
+                            .pool
+                            .lookup_insert::<hash::LcCite>(ctx, globals.hash, str, 0)?;
                     if let Some(cite_out) = cite_out {
                         *cite_out = lc_res.loc;
                     }
-                    let HashExtra::LcCite(cite_loc) = globals.hash.node(lc_res.loc).extra else {
-                        panic!("LcCite lookup didn't have LcCite extra");
-                    };
-                    if lc_res.exists {
+                    if let Some(cite_loc) = lc_res.extra {
                         let HashExtra::Cite(cite) = globals.hash.node(cite_loc).extra else {
                             panic!("LcCite location didn't have Cite extra");
                         };
@@ -874,13 +867,11 @@ pub(crate) fn scan_and_store_the_field_value_and_eat_white(
                     } else {
                         let str = &globals.buffers.buffer(BufTy::Ex)
                             [ex_buf_xptr..globals.buffers.offset(BufTy::Ex, 1)];
-                        let c_res = globals.pool.lookup_str_insert(
-                            ctx,
-                            globals.hash,
-                            str,
-                            HashExtra::Cite(0),
-                        )?;
-                        if c_res.exists {
+                        let c_res =
+                            globals
+                                .pool
+                                .lookup_insert::<hash::Cite>(ctx, globals.hash, str, 0)?;
+                        if c_res.extra.is_some() {
                             hash_cite_confusion(ctx);
                             return Err(BibtexError::Fatal);
                         }
@@ -1018,18 +1009,8 @@ pub(crate) fn von_token_found(
                         *name_bf_ptr += 1;
                     }
                     let str = &buffers.buffer(BufTy::Sv)[name_bf_yptr..*name_bf_ptr];
-                    let res = pool.lookup_str(hash, str, StrIlk::ControlSeq);
-                    let ilk = res
-                        .exists
-                        .then(|| {
-                            if let HashExtra::ControlSeq(seq) = hash.node(res.loc).extra {
-                                Some(seq)
-                            } else {
-                                None
-                            }
-                        })
-                        .flatten();
-                    if let Some(seq) = ilk {
+                    let res = pool.lookup::<hash::CtrlSeq>(hash, str);
+                    if let Some(seq) = res.extra {
                         return match seq {
                             ControlSeq::UpperOE
                             | ControlSeq::UpperAE

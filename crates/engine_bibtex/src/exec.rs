@@ -5,6 +5,7 @@ use crate::{
     cite::CiteInfo,
     entries::{EntryData, ENT_STR_SIZE},
     global::{GlobalData, GLOB_STR_SIZE},
+    hash,
     hash::{BstBuiltin, BstFn, HashData, HashExtra},
     log::{
         brace_lvl_one_letters_complaint, braces_unbalanced_complaint,
@@ -17,8 +18,7 @@ use crate::{
         check_brace_level, decr_brace_level, enough_text_chars, name_scan_for_and,
         von_name_ends_and_last_name_starts_stuff, von_token_found, QUOTE_NEXT_FN,
     },
-    ASCIICode, Bibtex, BibtexError, BufPointer, GlobalItems, HashPointer, PoolPointer, StrIlk,
-    StrNumber,
+    ASCIICode, Bibtex, BibtexError, BufPointer, GlobalItems, HashPointer, PoolPointer, StrNumber,
 };
 use std::ops::{Deref, DerefMut, Index};
 
@@ -1102,13 +1102,9 @@ fn interp_change_case(
                                 idx += 1;
                             }
 
-                            let res =
-                                pool.lookup_str(hash, &scratch[old_idx..idx], StrIlk::ControlSeq);
+                            let res = pool.lookup::<hash::CtrlSeq>(hash, &scratch[old_idx..idx]);
 
-                            if res.exists {
-                                let HashExtra::ControlSeq(seq) = hash.node(res.loc).extra else {
-                                    panic!("ControlSeq lookup didn't have ControlSeq extra");
-                                };
+                            if let Some(seq) = res.extra {
                                 match conv_ty {
                                     ConvTy::TitleLower | ConvTy::AllLower => match seq {
                                         ControlSeq::UpperOE
@@ -1771,12 +1767,8 @@ fn interp_purify(
                                 idx += 1;
                             }
 
-                            let res =
-                                pool.lookup_str(hash, &scratch[old_idx..idx], StrIlk::ControlSeq);
-                            if res.exists {
-                                let HashExtra::ControlSeq(seq) = hash.node(res.loc).extra else {
-                                    panic!("ControlSeq lookup didn't have ControlSeq extra");
-                                };
+                            let res = pool.lookup::<hash::CtrlSeq>(hash, &scratch[old_idx..idx]);
+                            if let Some(seq) = res.extra {
                                 scratch[write_idx] = scratch[old_idx];
                                 write_idx += 1;
                                 match seq {
@@ -2162,11 +2154,8 @@ fn interp_width(
                         if idx < str.len() && idx == old_idx {
                             idx += 1;
                         } else {
-                            let res = pool.lookup_str(hash, &str[old_idx..idx], StrIlk::ControlSeq);
-                            if res.exists {
-                                let HashExtra::ControlSeq(seq) = hash.node(res.loc).extra else {
-                                    panic!("ControlSeq lookup didn't have ControlSeq extra");
-                                };
+                            let res = pool.lookup::<hash::CtrlSeq>(hash, &str[old_idx..idx]);
+                            if let Some(seq) = res.extra {
                                 match seq {
                                     ControlSeq::LowerSS => string_width += 500,
                                     ControlSeq::LowerAE => string_width += 722,

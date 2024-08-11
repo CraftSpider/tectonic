@@ -4,6 +4,7 @@ use crate::{
     char_info::LexClass,
     cite::CiteInfo,
     exec::print_bst_name,
+    hash,
     hash::{HashData, HashExtra},
     log::{
         aux_end1_err_print, aux_end2_err_print, aux_err_illegal_another_print,
@@ -15,7 +16,7 @@ use crate::{
     peekable::PeekableInput,
     pool::StringPool,
     scan::Scan,
-    Bibtex, BibtexError, File, GlobalItems, StrIlk, StrNumber,
+    Bibtex, BibtexError, File, GlobalItems, StrNumber,
 };
 use std::ffi::CString;
 use tectonic_bridge_core::FileFormat;
@@ -105,8 +106,8 @@ fn aux_bib_data_command(
 
         let file = &buffers.buffer(BufTy::Base)
             [buffers.offset(BufTy::Base, 1)..buffers.offset(BufTy::Base, 2)];
-        let res = pool.lookup_str_insert(ctx, hash, file, HashExtra::BibFile)?;
-        if res.exists {
+        let res = pool.lookup_insert::<hash::BibFile>(ctx, hash, file, ())?;
+        if res.extra.is_some() {
             ctx.write_logs("This database file appears more than once: ");
             print_bib_name(ctx, pool, hash.text(res.loc))?;
             aux_err_print(ctx, buffers, aux, pool)?;
@@ -176,8 +177,8 @@ fn aux_bib_style_command(
 
     let file = &buffers.buffer(BufTy::Base)
         [buffers.offset(BufTy::Base, 1)..buffers.offset(BufTy::Base, 2)];
-    let res = pool.lookup_str_insert(ctx, hash, file, HashExtra::BstFile)?;
-    if res.exists {
+    let res = pool.lookup_insert::<hash::BstFile>(ctx, hash, file, ())?;
+    if res.extra.is_some() {
         ctx.write_logs("Already encountered style file");
         print_confusion(ctx);
         return Err(BibtexError::Fatal);
@@ -276,16 +277,12 @@ fn aux_citation_command(
         let lc_cite = &mut buffers.buffer_mut(BufTy::Ex)[range];
         lc_cite.make_ascii_lowercase();
 
-        let lc_res = pool.lookup_str_insert(ctx, hash, lc_cite, HashExtra::LcCite(0))?;
-        if lc_res.exists {
-            let HashExtra::LcCite(cite_loc) = hash.node(lc_res.loc).extra else {
-                panic!("LcCite lookup didn't have LcCite extra");
-            };
-
+        let lc_res = pool.lookup_insert::<hash::LcCite>(ctx, hash, lc_cite, 0)?;
+        if let Some(cite_loc) = lc_res.extra {
             let cite = &buffers.buffer(BufTy::Base)
                 [buffers.offset(BufTy::Base, 1)..buffers.offset(BufTy::Base, 2)];
-            let uc_res = pool.lookup_str(hash, cite, StrIlk::Cite);
-            if !uc_res.exists {
+            let uc_res = pool.lookup::<hash::Cite>(hash, cite);
+            if uc_res.extra.is_none() {
                 let HashExtra::Cite(cite) = hash.node(cite_loc).extra else {
                     panic!("LcCite location didn't have a Cite extra");
                 };
@@ -301,8 +298,8 @@ fn aux_citation_command(
         } else {
             let cite = &buffers.buffer(BufTy::Base)
                 [buffers.offset(BufTy::Base, 1)..buffers.offset(BufTy::Base, 2)];
-            let uc_res = pool.lookup_str_insert(ctx, hash, cite, HashExtra::Cite(0))?;
-            if uc_res.exists {
+            let uc_res = pool.lookup_insert::<hash::Cite>(ctx, hash, cite, 0)?;
+            if uc_res.extra.is_some() {
                 hash_cite_confusion(ctx);
                 return Err(BibtexError::Fatal);
             }
@@ -375,8 +372,8 @@ fn aux_input_command(
 
     let file = &buffers.buffer(BufTy::Base)
         [buffers.offset(BufTy::Base, 1)..buffers.offset(BufTy::Base, 2)];
-    let res = pool.lookup_str_insert(ctx, hash, file, HashExtra::AuxFile)?;
-    if res.exists {
+    let res = pool.lookup_insert::<hash::AuxFile>(ctx, hash, file, ())?;
+    if res.extra.is_some() {
         ctx.write_logs("Already encountered file ");
         print_aux_name(ctx, pool, hash.text(res.loc))?;
         aux_err_print(ctx, buffers, aux, pool)?;
@@ -420,15 +417,9 @@ pub(crate) fn get_aux_command_and_process(
 
     let line = &globals.buffers.buffer(BufTy::Base)
         [globals.buffers.offset(BufTy::Base, 1)..globals.buffers.offset(BufTy::Base, 2)];
-    let res = globals
-        .pool
-        .lookup_str(globals.hash, line, StrIlk::AuxCommand);
+    let res = globals.pool.lookup::<hash::AuxCmd>(globals.hash, line);
 
-    if res.exists {
-        let HashExtra::AuxCommand(cmd) = globals.hash.node(res.loc).extra else {
-            panic!("AuxCommand lookup didn't have AuxCommand extra");
-        };
-
+    if let Some(cmd) = res.extra {
         match cmd {
             AuxCommand::Data => aux_bib_data_command(
                 ctx,

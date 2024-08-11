@@ -27,7 +27,7 @@ use crate::{
     entries::EntryData,
     exec::ExecCtx,
     global::GlobalData,
-    hash::{HashData, HashExtra},
+    hash::HashData,
     log::{
         bib_close_log, log_pr_aux_name, print_aux_name, print_confusion, sam_wrong_file_name_print,
         AsBytes,
@@ -324,40 +324,13 @@ impl<'a, 'cbs> Bibtex<'a, 'cbs> {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
-pub(crate) struct LookupRes {
-    /// The location of the string - where it exists, was inserted, of if insert is false,
-    /// where it *would* have been inserted
-    loc: usize,
-    /// Whether the string existed in the hash table already
-    exists: bool,
-}
-
 #[derive(Debug)]
 pub(crate) struct FindCiteLocs {
     cite_loc: CiteNumber,
     lc_cite_loc: CiteNumber,
 
-    cite_found: bool,
-    lc_found: bool,
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) enum StrIlk {
-    Text,
-    Integer,
-    AuxCommand,
-    AuxFile,
-    BstCommand,
-    BstFile,
-    BibFile,
-    FileExt,
-    Cite,
-    LcCite,
-    BstFn,
-    BibCommand,
-    Macro,
-    ControlSeq,
+    cite_extra: Option<CiteNumber>,
+    lc_extra: Option<HashPointer>,
 }
 
 type StrNumber = usize;
@@ -550,11 +523,10 @@ pub(crate) fn get_the_top_level_aux_file_name(
     }
 
     set_extension(&mut path, b".aux");
-    let lookup =
-        match pool.lookup_str_insert(ctx, hash, &path[..path.len() - 1], HashExtra::AuxFile) {
-            Ok(res) => res,
-            Err(_) => return Err(BibtexError::Fatal),
-        };
+    let lookup = match pool.lookup_insert::<hash::AuxFile>(ctx, hash, &path[..path.len() - 1], ()) {
+        Ok(res) => res,
+        Err(_) => return Err(BibtexError::Fatal),
+    };
 
     aux.push_file(File {
         name: hash.text(lookup.loc),
@@ -562,7 +534,7 @@ pub(crate) fn get_the_top_level_aux_file_name(
         line: 0,
     });
 
-    if lookup.exists {
+    if lookup.extra.is_some() {
         ctx.write_logs("Already encountered auxiliary file");
         print_confusion(ctx);
         return Err(BibtexError::Fatal);

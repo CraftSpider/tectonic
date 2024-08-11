@@ -1,9 +1,10 @@
 use crate::{
     entries::EntryData,
+    hash,
     hash::{HashData, HashExtra},
     other::OtherData,
     pool::StringPool,
-    CiteNumber, FindCiteLocs, HashPointer, StrIlk, StrNumber,
+    CiteNumber, FindCiteLocs, HashPointer, StrNumber,
 };
 use std::{cmp::Ordering, ops::IndexMut};
 
@@ -165,13 +166,13 @@ pub(crate) fn find_cite_locs_for_this_cite_key(
 ) -> FindCiteLocs {
     let val = pool.get_str(cite_str);
 
-    let cite_hash = pool.lookup_str(hash, val, StrIlk::Cite);
-    let lc_cite_hash = pool.lookup_str(hash, &val.to_ascii_lowercase(), StrIlk::LcCite);
+    let cite_hash = pool.lookup::<hash::Cite>(hash, val);
+    let lc_cite_hash = pool.lookup::<hash::LcCite>(hash, &val.to_ascii_lowercase());
 
     FindCiteLocs {
         cite_loc: cite_hash.loc,
-        cite_found: cite_hash.exists,
+        cite_extra: cite_hash.extra,
         lc_cite_loc: lc_cite_hash.loc,
-        lc_found: lc_cite_hash.exists,
+        lc_extra: lc_cite_hash.extra,
     }
 }
