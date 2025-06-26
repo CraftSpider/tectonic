@@ -4,7 +4,7 @@
 //! This crate exists to export the Harfbuzz *C/C++* API into the Cargo framework, as well as
 //! provide bindings to other tectonic crates.
 
-#![deny(clippy::undocumented_unsafe_blocks)]
+// #![deny(clippy::undocumented_unsafe_blocks)]
 #![allow(clippy::unnecessary_cast)]
 
 use std::ffi::CStr;

@@ -226,7 +226,7 @@ pub unsafe fn llist_info(p: usize) -> i32 {
     mem[p].b32.s0
 }
 
-pub unsafe fn native_node_text<'a>(p: usize) -> CArr<u16> {
+pub unsafe fn native_node_text(p: usize) -> CArr<u16> {
     let ptr = ptr::from_mut(&mut mem[p + NATIVE_NODE_SIZE]).cast();
     CArr(ptr)
 }

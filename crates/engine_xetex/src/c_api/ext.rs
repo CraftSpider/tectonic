@@ -1,6 +1,6 @@
 use crate::c_api::core::{
-    scaled_t, UTF16Code, AUTO, FONT_FLAGS_COLORED, FONT_FLAGS_VERTICAL, ICUMAPPING, RAW,
-    US_NATIVE_UTF16, UTF16BE, UTF16LE, UTF16_NATIVE, UTF8,
+    scaled_t, UTF16Code, AUTO, FONT_FLAGS_COLORED, FONT_FLAGS_VERTICAL, RAW, US_NATIVE_UTF16,
+    UTF16BE, UTF16LE, UTF16_NATIVE, UTF8,
 };
 use crate::c_api::engine::{
     begin_diagnostic, end_diagnostic, file_name, font_area, font_feature_warning,
@@ -8,11 +8,17 @@ use crate::c_api::engine::{
     loaded_font_letter_space, loaded_font_mapping, memory_word, name_of_file,
     native_font_type_flag, print_raw_char,
 };
-use crate::c_api::mfmp::{get_tex_str, maketexstring};
-use crate::c_api::output::{print_char, print_int, print_nl, print_str};
+use crate::c_api::mfmp::get_tex_str;
+use crate::c_api::output::{print_char, print_nl, print_str};
 use crate::teckit::{
     kForm_Bytes, TECkit_ConvertBuffer, TECkit_CreateConverter, TECkit_ResetConverter, UniChar,
 };
+use enrede::encoding::Utf8;
+use icu::locale::Locale;
+use icu::segmenter::iterators::LineBreakIterator;
+use icu::segmenter::options::LineBreakOptions;
+use icu::segmenter::scaffold::Utf16;
+use icu::segmenter::{LineSegmenter, LineSegmenterBorrowed};
 use memchr::memmem;
 use std::borrow::Cow;
 use std::cell::{Cell, RefCell};
@@ -20,7 +26,6 @@ use std::ffi::{CStr, CString};
 use std::{mem, ptr, slice};
 use tectonic_bridge_core::FileFormat;
 use tectonic_bridge_harfbuzz as hb;
-use tectonic_bridge_icu as icu;
 use tectonic_io_base::InputHandle;
 use tectonic_xetex_layout::engine::LayoutEngine;
 use tectonic_xetex_layout::manager::{Engine, FontManager};
@@ -30,7 +35,8 @@ pub const NATIVE_INFO_OFFSET: usize = 4;
 pub const OTGR_FONT_FLAG: u32 = 0xFFFE;
 
 thread_local! {
-    static BRK_ITER: RefCell<Option<icu::BreakIterator>> = const { RefCell::new(None) };
+    static SEGMENTER: RefCell<Option<LineSegmenterBorrowed<'static>>> = const { RefCell::new(None) };
+    static BRK_ITER: RefCell<Option<LineBreakIterator<'static, 'static, Utf16>>> = const { RefCell::new(None) };
     static BRK_LOCALE_STR_NUM: Cell<i32> = const { Cell::new(0) };
     static SAVED_MAPPING_NAME: Cell<*mut libc::c_char> = const { Cell::new(ptr::null_mut()) };
 }
@@ -94,6 +100,7 @@ pub unsafe extern "C" fn linebreak_start(
     text_len: i32,
 ) {
     let locale = get_tex_str(locale_str_num);
+
     let text = slice::from_raw_parts(text, text_len as usize);
 
     if font_area[f as usize] as u32 == OTGR_FONT_FLAG && locale.to_bytes() == b"G" {
@@ -104,43 +111,51 @@ pub unsafe extern "C" fn linebreak_start(
     }
 
     if locale_str_num != BRK_LOCALE_STR_NUM.get() && BRK_ITER.with_borrow(|b| b.is_some()) {
-        BRK_ITER.with_borrow_mut(|b| *b = None);
+        SEGMENTER.set(None);
+        BRK_ITER.set(None);
     }
 
-    if BRK_ITER.with_borrow(|b| b.is_none()) {
-        match icu::BreakIterator::new(&locale) {
-            Ok(bi) => BRK_ITER.with_borrow_mut(|b| *b = Some(bi)),
-            Err(err) => {
+    SEGMENTER.with_borrow_mut(|b| {
+        if b.is_none() {
+            let locale = enrede::CString::<Utf8>::from_std(locale).unwrap();
+            let locale = Locale::try_from_str(locale.as_std()).or_else(|e| {
                 begin_diagnostic();
                 print_nl(b'E' as i32);
                 print_str(b"rror ");
-                print_int(err.into_raw());
+                print_str(e.to_string().as_bytes());
                 print_str(b" creating linebreak iterator for locale `");
-                print_str(locale.to_bytes());
+                print_str(locale.as_bytes());
                 print_str(b"'; trying default locale `en_us'.");
                 end_diagnostic(true);
-                match icu::BreakIterator::new(CStr::from_bytes_with_nul(b"en_us\0").unwrap()) {
-                    Ok(bi) => BRK_ITER.with_borrow_mut(|b| *b = Some(bi)),
-                    Err(err) => panic!(
-                        "failed to create linebreak iterator, status={}",
-                        err.into_raw()
-                    ),
-                }
-            }
-        }
-        BRK_LOCALE_STR_NUM.set(locale_str_num);
-    }
+                Locale::try_from_str("en_us")
+            });
 
-    let _ = BRK_ITER.with_borrow_mut(|b| b.as_mut().unwrap().set_text(text));
+            let seg = match locale {
+                Ok(locale) => {
+                    let mut opts = LineBreakOptions::default();
+                    opts.content_locale = Some(&locale.id);
+                    LineSegmenter::new_auto(opts)
+                }
+                Err(err) => panic!("failed to create linebreak iterator, status={err}"),
+            };
+
+            *b = Some(seg);
+        }
+
+        let seg = b.as_ref().unwrap();
+
+        BRK_ITER.set(Some(seg.segment_utf16(text)));
+        BRK_LOCALE_STR_NUM.set(locale_str_num);
+    });
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn linebreak_next(f: libc::c_int) -> libc::c_int {
-    let engine = &mut *font_layout_engine[f as usize].cast::<LayoutEngine>();
     BRK_ITER.with_borrow_mut(|b| {
         if let Some(iter) = b {
-            iter.next()
+            iter.next().unwrap_or(usize::MAX) as libc::c_int
         } else {
+            let engine = &mut *font_layout_engine[f as usize].cast::<LayoutEngine>();
             engine.find_next_graphite_break() as libc::c_int
         }
     })
@@ -168,19 +183,14 @@ pub unsafe extern "C" fn get_encoding_mode_and_info(info: *mut i32) -> libc::c_i
     } else if file_name_b.eq_ignore_ascii_case(b"bytes") {
         RAW
     } else {
-        let cnv = icu::Converter::new(file_name);
-        if cnv.is_err() {
-            begin_diagnostic();
-            print_nl(b'U' as i32); /* ensure message starts on a new line */
-            print_str(b"nknown encoding `");
-            print_str(file_name_b);
-            print_str(b"'; reading as raw bytes");
-            end_diagnostic(true);
-            RAW
-        } else {
-            *info = maketexstring(file_name_b.as_ptr().cast());
-            ICUMAPPING
-        }
+        // TODO: Support ICUMAPPING with enrede
+        begin_diagnostic();
+        print_nl(b'U' as i32); /* ensure message starts on a new line */
+        print_str(b"nknown encoding `");
+        print_str(file_name_b);
+        print_str(b"'; reading as raw bytes");
+        end_diagnostic(true);
+        RAW
     }
 }
 
@@ -496,14 +506,15 @@ pub unsafe extern "C" fn ot_get_font_metrics(
 ) {
     let engine = &mut *engine.cast::<LayoutEngine>();
 
-    *ascent = d_to_fix(engine.font().ascent() as f64);
-    *descent = d_to_fix(engine.font().descent() as f64);
+    *ascent = d_to_fix(engine.font().ascent() as f64) as i32;
+    *descent = d_to_fix(engine.font().descent() as f64) as i32;
 
     *slant =
-        d_to_fix(fix_to_d(engine.font().slant()) * engine.extend() as f64 + engine.slant() as f64);
+        d_to_fix(fix_to_d(engine.font().slant()) * engine.extend() as f64 + engine.slant() as f64)
+            as i32;
 
-    *capheight = d_to_fix(engine.font().cap_height() as f64);
-    *xheight = d_to_fix(engine.font().x_height() as f64);
+    *capheight = d_to_fix(engine.font().cap_height() as f64) as i32;
+    *xheight = d_to_fix(engine.font().x_height() as f64) as i32;
 
     if *xheight == 0 {
         let glyph_id = engine.font().map_char_to_glyph('x');
@@ -511,7 +522,7 @@ pub unsafe extern "C" fn ot_get_font_metrics(
             let (height, _) = engine
                 .font_mut()
                 .get_glyph_height_depth(glyph_id as GlyphID);
-            *xheight = d_to_fix(height as f64);
+            *xheight = d_to_fix(height as f64) as i32;
         } else {
             *xheight = *ascent / 2;
         }
@@ -523,7 +534,7 @@ pub unsafe extern "C" fn ot_get_font_metrics(
             let (height, _) = engine
                 .font_mut()
                 .get_glyph_height_depth(glyph_id as GlyphID);
-            *capheight = d_to_fix(height as f64);
+            *capheight = d_to_fix(height as f64) as i32;
         } else {
             *capheight = *ascent;
         }

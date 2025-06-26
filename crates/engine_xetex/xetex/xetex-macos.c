@@ -179,7 +179,7 @@ DoAATLayout(void* p, int justify)
         }
     }
 
-    native_glyph_count(node) = totalGlyphCount;
+    set_native_glyph_count(node, totalGlyphCount);
     native_glyph_info_ptr(node) = glyph_info;
 
     if (!justify) {

@@ -10,9 +10,9 @@ use crate::font::Font;
 #[cfg(not(target_os = "macos"))]
 use tectonic_bridge_fontconfig as fc;
 
-mod engine;
+pub mod engine;
 mod font;
-mod manager;
+pub mod manager;
 mod utils;
 
 #[cfg(not(target_os = "macos"))]

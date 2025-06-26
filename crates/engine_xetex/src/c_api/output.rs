@@ -331,7 +331,7 @@ pub unsafe extern "C" fn print_nl_cstr(str: *const libc::c_char) {
 pub unsafe extern "C" fn print_esc(s: i32) {
     let c = intpar("escape_char");
 
-    if c >= 0 && c <= BIGGEST_USV {
+    if (0..=BIGGEST_USV).contains(&c) {
         print_char(c);
     }
     print(s);
@@ -341,7 +341,7 @@ pub unsafe extern "C" fn print_esc(s: i32) {
 pub unsafe extern "C" fn print_esc_cstr(str: *const libc::c_char) {
     let c = intpar("escape_char");
 
-    if c >= 0 && c <= BIGGEST_USV {
+    if (0..=BIGGEST_USV).contains(&c) {
         print_char(c);
     }
     print_cstr(str);
@@ -382,7 +382,7 @@ pub unsafe extern "C" fn print_int(mut n: i32) {
 
     loop {
         dig[k as usize] = (n % 10) as u8;
-        n = n / 10;
+        n /= 10;
         k += 1;
         if n == 0 {
             break;
@@ -412,12 +412,12 @@ pub unsafe extern "C" fn print_cs(p: i32) {
         } else {
             print_char((p - 1) as i32);
         }
-    } else if p >= UNDEFINED_CONTROL_SEQUENCE && p <= EQTB_SIZE || p > *eqtb_top as usize {
+    } else if (UNDEFINED_CONTROL_SEQUENCE..=EQTB_SIZE).contains(&p) || p > *eqtb_top as usize {
         print_esc_cstr(c!("IMPOSSIBLE."));
     } else if hash[p].s1 >= *str_ptr {
         print_esc_cstr(c!("NONEXISTENT."));
     } else {
-        if p >= PRIM_EQTB_BASE && p < FROZEN_NULL_FONT {
+        if (PRIM_EQTB_BASE..FROZEN_NULL_FONT).contains(&p) {
             print_esc(prim[p - PRIM_EQTB_BASE].s1 - 1);
         } else {
             print_esc(hash[p].s1);
@@ -438,7 +438,7 @@ pub unsafe extern "C" fn sprint_cs(p: i32) {
             print_esc_cstr(c!("csname"));
             print_esc_cstr(c!("endcsname"));
         }
-    } else if p >= PRIM_EQTB_BASE && p < FROZEN_NULL_FONT {
+    } else if (PRIM_EQTB_BASE..FROZEN_NULL_FONT).contains(&p) {
         print_esc(prim[p - PRIM_EQTB_BASE].s1 - 1);
     } else {
         print_esc(hash[p].s1);
@@ -527,10 +527,10 @@ pub unsafe extern "C" fn print_native_word(p: i32) {
     let mut range = 0..for_end as usize;
     while let Some(i) = range.next() {
         let c = native_node_text(p)[i] as i32;
-        if c >= 0xD800 && c < 0xDC00 {
+        if (0xD800..0xDC00).contains(&c) {
             if i < (mem[p + 4].b16.s1 - 1) as usize {
                 let cc = native_node_text(p)[i + 1] as i32;
-                if cc >= 0xDC00 && cc < 0xE000 {
+                if (0xDC00..0xE000).contains(&cc) {
                     let c = 0x10000 + (c - 0xD800) * 1024 + (cc - 0xDC00);
                     print_char(c);
                     range.next();

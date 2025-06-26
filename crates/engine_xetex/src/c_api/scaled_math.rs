@@ -184,7 +184,7 @@ pub unsafe extern "C" fn round_xn_over_d(mut x: scaled_t, n: i32, d: i32) -> sca
         u = MAGIC * (u / d) + (v / d);
     }
 
-    v = v % d;
+    v %= d;
     if 2 * v >= d {
         u += 1;
     }
@@ -224,12 +224,12 @@ unsafe fn make_frac(mut p: i32, mut q: i32) -> i32 {
 
         loop {
             let be_careful = p - q;
-            p = be_careful + p;
+            p += be_careful;
             if p >= 0 {
                 f = 2 * f + 1;
             } else {
-                f = 2 * f;
-                p = p + q;
+                f *= 2;
+                p += q;
             }
 
             if f >= 0x10000000 {
@@ -268,17 +268,17 @@ unsafe fn take_frac(mut q: i32, mut f: i32) -> i32 {
         n = 0;
     } else {
         n = f / 0x10000000;
-        f = f % 0x10000000;
+        f %= 0x10000000;
 
         if q <= 0x7FFFFFFF / n {
-            n = n * q;
+            n *= q;
         } else {
             *arith_error = true;
             n = 0x7FFFFFFF;
         }
     }
 
-    f = f + 0x10000000;
+    f += 0x10000000;
     let mut p = 0x08000000;
 
     if q < 0x40000000 {
@@ -286,9 +286,9 @@ unsafe fn take_frac(mut q: i32, mut f: i32) -> i32 {
             if f % 2 != 0 {
                 p = (p + q) / 2;
             } else {
-                p = p / 2;
+                p /= 2;
             }
-            f = f / 2;
+            f /= 2;
             if f == 1 {
                 break;
             }
@@ -298,9 +298,9 @@ unsafe fn take_frac(mut q: i32, mut f: i32) -> i32 {
             if f % 2 != 0 {
                 p = p + (q - p) / 2;
             } else {
-                p = p / 2;
+                p /= 2;
             }
-            f = f / 2;
+            f /= 2;
             if f == 1 {
                 break;
             }
