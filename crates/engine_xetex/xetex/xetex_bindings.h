@@ -80,6 +80,8 @@
 
 #define SCRIPT_SCRIPT_SIZE 512
 
+typedef int32_t scaled_t;
+
 #if defined(WORDS_BIGENDIAN)
 typedef struct {
   int32_t s1;
@@ -119,8 +121,6 @@ typedef union {
   void *ptr;
 } memory_word;
 
-typedef int32_t scaled_t;
-
 typedef unsigned short UTF16Code;
 
 #ifdef __cplusplus
@@ -134,6 +134,10 @@ void set_loaded_font_flags(char val);
 const void *loaded_font_mapping(void);
 
 void set_loaded_font_mapping(const void *ptr);
+
+scaled_t loaded_font_letter_space(void);
+
+void set_loaded_font_letter_space(scaled_t val);
 
 uint16_t native_glyph_count(memory_word *node);
 

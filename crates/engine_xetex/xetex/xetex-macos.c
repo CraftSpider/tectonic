@@ -641,7 +641,7 @@ loadAATfont(CTFontDescriptorRef descriptor, int32_t scaled_size, const char* cp1
     }
 
     if (letterspace != 0.0)
-        loaded_font_letter_space = (letterspace / 100.0) * scaled_size;
+        set_loaded_font_letter_space((letterspace / 100.0) * scaled_size);
 
     // Disable Core Text font fallback (cascading) with only the last resort font
     // in the cascade list.

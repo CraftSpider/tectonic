@@ -2,7 +2,7 @@ use crate::c_api::core::{
     scaled_t, UTF16Code, AUTO, FONT_FLAGS_COLORED, FONT_FLAGS_VERTICAL, RAW, US_NATIVE_UTF16,
     UTF16BE, UTF16LE, UTF16_NATIVE, UTF8,
 };
-use crate::c_api::engine::{begin_diagnostic, end_diagnostic, file_name, font_area, font_feature_warning, font_layout_engine, font_mapping_warning, get_tracing_fonts_state, loaded_font_letter_space, memory_word, name_of_file, native_font_type_flag, print_raw_char, EngineCtx};
+use crate::c_api::engine::{begin_diagnostic, end_diagnostic, file_name, font_area, font_feature_warning, font_layout_engine, font_mapping_warning, get_tracing_fonts_state, memory_word, name_of_file, native_font_type_flag, print_raw_char, EngineCtx};
 use crate::c_api::mfmp::get_tex_str;
 use crate::c_api::output::{print_char, print_nl, print_str};
 use crate::teckit::{
@@ -756,7 +756,7 @@ pub unsafe fn load_ot_font(
     }
 
     if letterspace != 0.0 {
-        *loaded_font_letter_space = (letterspace / 100.0 * scaled_size as f32) as scaled_t;
+        ctx.loaded_font_letter_space = (letterspace / 100.0 * scaled_size as f32) as scaled_t;
     }
 
     if ctx.loaded_font_flags & FONT_FLAGS_COLORED == 0 {

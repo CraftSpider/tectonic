@@ -60,11 +60,12 @@ thread_local! {
 pub struct EngineCtx {
     pub loaded_font_flags: libc::c_char,
     pub loaded_font_mapping: *const libc::c_void,
+    pub loaded_font_letter_space: scaled_t,
 }
 
 impl EngineCtx {
     const fn new() -> EngineCtx {
-        EngineCtx { loaded_font_flags: 0, loaded_font_mapping: ptr::null() }
+        EngineCtx { loaded_font_flags: 0, loaded_font_mapping: ptr::null(), loaded_font_letter_space: 0 }
     }
 
     pub fn with<T>(f: impl FnOnce(&mut EngineCtx) -> T) -> T {
@@ -270,6 +271,16 @@ pub unsafe extern "C" fn set_loaded_font_mapping(ptr: *const libc::c_void) {
     EngineCtx::with(|ctx| ctx.loaded_font_mapping = ptr)
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn loaded_font_letter_space() -> scaled_t {
+    EngineCtx::with(|ctx| ctx.loaded_font_letter_space)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn set_loaded_font_letter_space(val: scaled_t) {
+    EngineCtx::with(|ctx| ctx.loaded_font_letter_space = val)
+}
+
 
 #[repr(transparent)]
 pub struct CArr<T>(*mut T);
@@ -323,8 +334,7 @@ extern "C" {
     );
     pub fn get_tracing_fonts_state() -> i32;
     pub fn print_raw_char(s: UTF16Code, incr_offset: bool);
-
-    pub static mut loaded_font_letter_space: DangerCell<scaled_t>;
+    
     pub static font_area: DangerCell<CArr<i32>>;
     pub static font_layout_engine: DangerCell<CArr<*mut ()>>;
     pub static mut native_font_type_flag: DangerCell<i32>;

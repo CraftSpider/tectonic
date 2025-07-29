@@ -11435,11 +11435,11 @@ load_native_font(int32_t u, str_number nom, str_number aire, scaled_t s)
     param_base[font_ptr] = fmem_ptr - 1;
     font_layout_engine[font_ptr] = font_engine;
     font_mapping[font_ptr] = 0;
-    font_letter_space[font_ptr] = loaded_font_letter_space;
+    font_letter_space[font_ptr] = loaded_font_letter_space();
 
     /* "measure the width of the space character and set up font parameters" */
     p = new_native_character(font_ptr, ' ' );
-    s = BOX_width(p) + loaded_font_letter_space;
+    s = BOX_width(p) + loaded_font_letter_space();
     /* Free up the memory */
     if(NATIVE_NODE_glyph_info_ptr(p)) {
        NATIVE_NODE_glyph_info_ptr(p) = mfree(NATIVE_NODE_glyph_info_ptr(p));

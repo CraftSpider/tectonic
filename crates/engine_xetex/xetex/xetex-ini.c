@@ -205,7 +205,6 @@ void **font_layout_engine;
 void **font_mapping;
 char *font_flags;
 scaled_t *font_letter_space;
-scaled_t loaded_font_letter_space;
 UTF16_code *mapped_text;
 char *xdv_buffer;
 int32_t *char_base;
