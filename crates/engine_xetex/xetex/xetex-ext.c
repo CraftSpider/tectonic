@@ -81,7 +81,7 @@ find_native_font(char* uname, int32_t scaled_size)
     XeTeXFont font = NULL;
     int index = 0;
 
-    loaded_font_mapping = NULL;
+    set_loaded_font_mapping(NULL);
     set_loaded_font_flags(0);
     loaded_font_letter_space = 0;
 

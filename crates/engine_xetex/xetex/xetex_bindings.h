@@ -131,6 +131,10 @@ char loaded_font_flags(void);
 
 void set_loaded_font_flags(char val);
 
+const void *loaded_font_mapping(void);
+
+void set_loaded_font_mapping(const void *ptr);
+
 uint16_t native_glyph_count(memory_word *node);
 
 void set_native_glyph_count(memory_word *node, uint16_t val);
