@@ -11463,7 +11463,7 @@ load_native_font(int32_t u, str_number nom, str_number aire, scaled_t s)
     }
 
     font_mapping[font_ptr] = loaded_font_mapping;
-    font_flags[font_ptr] = loaded_font_flags;
+    font_flags[font_ptr] = loaded_font_flags();
     return font_ptr;
 }
 

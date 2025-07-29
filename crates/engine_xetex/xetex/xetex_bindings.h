@@ -62,9 +62,9 @@
 
 #define HASH_BASE 2228226
 
-#define PRIM_EQTB_BASE 2254339
+#define PRIM_EQTB_BASE 2243238
 
-#define FROZEN_NULL_FONT 2243238
+#define FROZEN_NULL_FONT 2245338
 
 #define UNDEFINED_CONTROL_SEQUENCE 2254339
 
@@ -126,6 +126,10 @@ typedef unsigned short UTF16Code;
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
+
+char loaded_font_flags(void);
+
+void set_loaded_font_flags(char val);
 
 uint16_t native_glyph_count(memory_word *node);
 
@@ -232,6 +236,10 @@ void print_native_word(int32_t p);
 
 void print_sa_num(int32_t q);
 
+void print_file_line(void);
+
+void print_two(int32_t n);
+
 int32_t tex_round(double r);
 
 int32_t half(int32_t x);
@@ -251,7 +259,7 @@ int32_t unif_rand(int32_t x);
 int32_t norm_rand(void);
 
 #ifdef __cplusplus
-} // extern "C"
-#endif // __cplusplus
+}  // extern "C"
+#endif  // __cplusplus
 
-#endif /* TECTONIC_ENGINE_XETEX_BINDGEN_H */
+#endif  /* TECTONIC_ENGINE_XETEX_BINDGEN_H */

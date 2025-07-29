@@ -11,7 +11,7 @@ use crate::font::Font;
 use tectonic_bridge_fontconfig as fc;
 
 pub mod engine;
-mod font;
+pub mod font;
 pub mod manager;
 mod utils;
 

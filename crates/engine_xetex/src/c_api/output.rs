@@ -582,6 +582,35 @@ pub unsafe extern "C" fn print_sa_num(q: i32) {
     print_int(n);
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn print_file_line() {
+    let mut level = *in_open as usize;
+    while level > 0 && full_source_filename_stack[level] == 0 {
+        level -= 1;
+    }
+    
+    if level == 0 {
+        print_nl_cstr(c!("! "));
+    } else {
+        print_nl_cstr(c!(""));
+        print(full_source_filename_stack[level]);
+        print(':' as i32);
+        if level == *in_open as usize {
+            print_int(*line);
+        } else {
+            print_int(line_stack[level + 1]);
+        }
+        print_cstr(c!(": "));
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn print_two(n: i32) {
+    let n = n.abs() % 100;
+    print_char(b'0' as i32 + (n / 10));
+    print_char(b'0' as i32 + (n % 10));
+}
+
 /// cbindgen:ignore
 extern "C" {
     fn ttstub_diag_finish(diag: *mut Diagnostic);
@@ -589,5 +618,4 @@ extern "C" {
     fn ttstub_output_putc(output: *mut OutputHandle, c: libc::c_int) -> libc::c_int;
 
     pub fn print_scaled(s: scaled_t);
-    pub fn print_file_line();
 }

@@ -1,6 +1,6 @@
 #![allow(non_upper_case_globals)]
 
-use std::cell::UnsafeCell;
+use std::cell::{RefCell, UnsafeCell};
 use std::ffi::CStr;
 use std::ops::{Deref, DerefMut, Index, IndexMut};
 use std::ptr;
@@ -52,6 +52,24 @@ use crate::c_api::core::{scaled_t, Selector, UTF16Code, NATIVE_NODE_SIZE};
 use crate::c_api::format::{CAT_CODE_BASE, PRIM_SIZE};
 pub use defs::*;
 use tectonic_io_base::OutputHandle;
+
+thread_local! {
+    static ENGINE: RefCell<EngineCtx> = const { RefCell::new(EngineCtx::new()) }
+}
+
+pub struct EngineCtx {
+    pub loaded_font_flags: libc::c_char,
+}
+
+impl EngineCtx {
+    const fn new() -> EngineCtx {
+        EngineCtx { loaded_font_flags: 0 }
+    }
+
+    pub fn with<T>(f: impl FnOnce(&mut EngineCtx) -> T) -> T {
+        ENGINE.with_borrow_mut(f)
+    }
+}
 
 /* ## THE ORIGINAL SITUATION (archived for posterity)
  *
@@ -231,6 +249,17 @@ pub unsafe fn native_node_text(p: usize) -> CArr<u16> {
     CArr(ptr)
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn loaded_font_flags() -> libc::c_char {
+    EngineCtx::with(|ctx| ctx.loaded_font_flags)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn set_loaded_font_flags(val: libc::c_char) {
+    EngineCtx::with(|ctx| ctx.loaded_font_flags = val)
+}
+
+
 #[repr(transparent)]
 pub struct CArr<T>(*mut T);
 
@@ -284,7 +313,6 @@ extern "C" {
     pub fn get_tracing_fonts_state() -> i32;
     pub fn print_raw_char(s: UTF16Code, incr_offset: bool);
 
-    pub static mut loaded_font_flags: DangerCell<libc::c_char>;
     pub static mut loaded_font_mapping: DangerCell<*const libc::c_void>;
     pub static mut loaded_font_letter_space: DangerCell<scaled_t>;
     pub static font_area: DangerCell<CArr<i32>>;

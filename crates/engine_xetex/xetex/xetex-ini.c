@@ -206,7 +206,6 @@ void **font_mapping;
 char *font_flags;
 scaled_t *font_letter_space;
 void *loaded_font_mapping;
-char loaded_font_flags;
 scaled_t loaded_font_letter_space;
 UTF16_code *mapped_text;
 char *xdv_buffer;

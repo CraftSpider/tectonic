@@ -82,7 +82,7 @@ find_native_font(char* uname, int32_t scaled_size)
     int index = 0;
 
     loaded_font_mapping = NULL;
-    loaded_font_flags = 0;
+    set_loaded_font_flags(0);
     loaded_font_letter_space = 0;
 
     splitFontName(name, &var, &feat, &end, &index);

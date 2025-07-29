@@ -618,7 +618,7 @@ loadAATfont(CTFontDescriptorRef descriptor, int32_t scaled_size, const char* cp1
         CFRelease(featureSettings);
     }
 
-    if ((loaded_font_flags & FONT_FLAGS_COLORED) != 0) {
+    if ((loaded_font_flags() & FONT_FLAGS_COLORED) != 0) {
         CGFloat red   = ((rgbValue & 0xFF000000) >> 24) / 255.0;
         CGFloat green = ((rgbValue & 0x00FF0000) >> 16) / 255.0;
         CGFloat blue  = ((rgbValue & 0x0000FF00) >> 8 ) / 255.0;

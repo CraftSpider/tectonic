@@ -2,12 +2,7 @@ use crate::c_api::core::{
     scaled_t, UTF16Code, AUTO, FONT_FLAGS_COLORED, FONT_FLAGS_VERTICAL, RAW, US_NATIVE_UTF16,
     UTF16BE, UTF16LE, UTF16_NATIVE, UTF8,
 };
-use crate::c_api::engine::{
-    begin_diagnostic, end_diagnostic, file_name, font_area, font_feature_warning,
-    font_layout_engine, font_mapping_warning, get_tracing_fonts_state, loaded_font_flags,
-    loaded_font_letter_space, loaded_font_mapping, memory_word, name_of_file,
-    native_font_type_flag, print_raw_char,
-};
+use crate::c_api::engine::{begin_diagnostic, end_diagnostic, file_name, font_area, font_feature_warning, font_layout_engine, font_mapping_warning, get_tracing_fonts_state, loaded_font_letter_space, loaded_font_mapping, memory_word, name_of_file, native_font_type_flag, print_raw_char, EngineCtx};
 use crate::c_api::mfmp::get_tex_str;
 use crate::c_api::output::{print_char, print_nl, print_str};
 use crate::teckit::{
@@ -27,6 +22,7 @@ use std::{mem, ptr, slice};
 use tectonic_bridge_core::FileFormat;
 use tectonic_bridge_harfbuzz as hb;
 use tectonic_io_base::InputHandle;
+use tectonic_xetex_layout::font::Font;
 use tectonic_xetex_layout::engine::LayoutEngine;
 use tectonic_xetex_layout::manager::{Engine, FontManager};
 use tectonic_xetex_layout::{Fixed, GlyphID, RawPlatformFontRef, XeTeXFont, XeTeXLayoutEngine};
@@ -351,6 +347,7 @@ pub fn read_feature_number(mut str: &[u8], f: &mut hb::Tag, v: &mut u32) -> bool
 }
 
 pub unsafe fn read_common_features(
+    ctx: &mut EngineCtx,
     feat: &[u8],
     extend: &mut f32,
     slant: &mut f32,
@@ -385,7 +382,7 @@ pub unsafe fn read_common_features(
             let s = feat;
             *rgb_value = read_rgb_a(&mut feat);
             if ptr::addr_eq(feat, &s[6..]) || ptr::addr_eq(feat, &s[8..]) {
-                *loaded_font_flags |= FONT_FLAGS_COLORED;
+                ctx.loaded_font_flags |= FONT_FLAGS_COLORED;
                 1
             } else {
                 -1
@@ -421,14 +418,17 @@ pub unsafe extern "C" fn readCommonFeatures(
     let len = end as usize - feat as usize;
     let feat = slice::from_raw_parts(feat.cast::<u8>(), len);
 
-    read_common_features(
-        feat,
-        &mut *extend,
-        &mut *slant,
-        &mut *embolden,
-        &mut *letterspace,
-        &mut *rgb_value,
-    ) as libc::c_int
+    EngineCtx::with(|ctx| {
+        read_common_features(
+            ctx,
+            feat,
+            &mut *extend,
+            &mut *slant,
+            &mut *embolden,
+            &mut *letterspace,
+            &mut *rgb_value,
+        )
+    }) as libc::c_int
 }
 
 #[no_mangle]
@@ -571,20 +571,12 @@ pub fn read_tag_with_param(mut cp: &[u8], param: &mut i32) -> hb::Tag {
     tag
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn loadOTfont(
-    _: RawPlatformFontRef,
-    font: XeTeXFont,
+pub unsafe fn load_ot_font(
+    ctx: &mut EngineCtx,
+    mut font: Box<Font>,
     scaled_size: Fixed,
-    cp1: *const libc::c_char,
-) -> XeTeXLayoutEngine {
-    let cp1 = if cp1.is_null() {
-        None
-    } else {
-        Some(CStr::from_ptr(cp1).to_bytes())
-    };
-
-    let mut font = Box::from_raw(font);
+    cp1: Option<&[u8]>,
+) -> LayoutEngine {
     let mut shapers = Vec::new();
     let mut rgb_value = 0x000000FFu32;
     let mut extend = 1.0;
@@ -664,6 +656,7 @@ pub unsafe extern "C" fn loadOTfont(
             }
 
             let i = read_common_features(
+                ctx,
                 &cp1[..opt_end],
                 &mut extend,
                 &mut slant,
@@ -685,10 +678,10 @@ pub unsafe extern "C" fn loadOTfont(
                 let mut value = 0;
                 if read_feature_number(&cp1[..opt_end], &mut tag, &mut value)
                     || engine.as_ref().unwrap().find_graphite_feature(
-                        &cp1[..opt_end],
-                        &mut tag,
-                        &mut value,
-                    )
+                    &cp1[..opt_end],
+                    &mut tag,
+                    &mut value,
+                )
                 {
                     features.push(hb::Feature {
                         tag,
@@ -741,7 +734,7 @@ pub unsafe extern "C" fn loadOTfont(
                     temp_end += 1;
                 }
                 if temp_end == 8 {
-                    *loaded_font_flags |= FONT_FLAGS_VERTICAL;
+                    ctx.loaded_font_flags |= FONT_FLAGS_VERTICAL;
                     cp1 = &cp1[opt_end..];
                     continue;
                 }
@@ -766,11 +759,11 @@ pub unsafe extern "C" fn loadOTfont(
         *loaded_font_letter_space = (letterspace / 100.0 * scaled_size as f32) as scaled_t;
     }
 
-    if *loaded_font_flags & FONT_FLAGS_COLORED == 0 {
+    if ctx.loaded_font_flags & FONT_FLAGS_COLORED == 0 {
         rgb_value = 0x000000FF;
     }
 
-    if *loaded_font_flags & FONT_FLAGS_VERTICAL != 0 {
+    if ctx.loaded_font_flags & FONT_FLAGS_VERTICAL != 0 {
         font.set_layout_dir_vertical(true);
     }
 
@@ -787,6 +780,23 @@ pub unsafe extern "C" fn loadOTfont(
     );
 
     *native_font_type_flag = OTGR_FONT_FLAG as i32;
+    engine
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn loadOTfont(
+    _: RawPlatformFontRef,
+    font: XeTeXFont,
+    scaled_size: Fixed,
+    cp1: *const libc::c_char,
+) -> XeTeXLayoutEngine {
+    let cp1 = if cp1.is_null() {
+        None
+    } else {
+        Some(CStr::from_ptr(cp1).to_bytes())
+    };
+    let font = Box::from_raw(font);
+    let engine = EngineCtx::with(|ctx| load_ot_font(ctx, font, scaled_size, cp1));
     Box::into_raw(Box::new(engine))
 }
 
