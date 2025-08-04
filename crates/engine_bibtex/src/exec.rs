@@ -324,9 +324,12 @@ pub(crate) fn figure_out_the_formatted_name(
     let str = pool.get_str(s1);
     let mut idx = 0;
 
-    buffers.set_init(BufTy::Ex, 0);
-    add_buf_pool(pool, buffers, s1);
-    buffers.set_offset(BufTy::Ex, 1, 0);
+    while str.len() > buffers.len() {
+        buffers.grow_all();
+    }
+    buffers.buffer_mut(BufTy::Ex)[..str.len()].copy_from_slice(str);
+    buffers.set_init(BufTy::Ex, str.len());
+    let mut ex_idx = 0;
 
     while idx < str.len() {
         if str[idx] == b'{' {
@@ -416,7 +419,7 @@ pub(crate) fn figure_out_the_formatted_name(
             }
 
             if end_of_group && to_be_written {
-                let buf_ptr = buffers.offset(BufTy::Ex, 1);
+                let buf_ptr = ex_idx;
                 idx = old_idx;
                 inner_brace_level = 1;
                 while inner_brace_level > 0 {
@@ -442,46 +445,44 @@ pub(crate) fn figure_out_the_formatted_name(
                             *name_bf_ptr = buffers.name_tok(cur_token);
                             *name_bf_xptr = buffers.name_tok(cur_token + 1);
                             if double_letter {
-                                if buffers.init(BufTy::Ex) + (*name_bf_xptr - *name_bf_ptr)
-                                    > buffers.len()
-                                {
+                                if ex_idx + (*name_bf_xptr - *name_bf_ptr) > buffers.len() {
                                     buffers.grow_all();
                                 }
-                                let ptr = buffers.offset(BufTy::Ex, 1);
                                 let len = *name_bf_xptr - *name_bf_ptr;
-                                buffers.copy_within(BufTy::Sv, BufTy::Ex, *name_bf_ptr, ptr, len);
-                                buffers.set_offset(BufTy::Ex, 1, ptr + len);
+                                buffers.copy_within(
+                                    BufTy::Sv,
+                                    BufTy::Ex,
+                                    *name_bf_ptr,
+                                    ex_idx,
+                                    len,
+                                );
+                                ex_idx += len;
                                 *name_bf_ptr += len;
                             } else {
                                 while *name_bf_ptr < *name_bf_xptr {
                                     if LexClass::of(buffers.at(BufTy::Sv, *name_bf_ptr))
                                         == LexClass::Alpha
                                     {
-                                        if buffers.offset(BufTy::Ex, 1) == buffers.len() {
+                                        if ex_idx == buffers.len() {
                                             buffers.grow_all();
                                         }
                                         buffers.set_at(
                                             BufTy::Ex,
-                                            buffers.offset(BufTy::Ex, 1),
+                                            ex_idx,
                                             buffers.at(BufTy::Sv, *name_bf_ptr),
                                         );
-                                        buffers.set_offset(
-                                            BufTy::Ex,
-                                            1,
-                                            buffers.offset(BufTy::Ex, 1) + 1,
-                                        );
+                                        ex_idx += 1;
                                         break;
                                     } else if *name_bf_ptr + 1 < *name_bf_xptr
                                         && buffers.at(BufTy::Sv, *name_bf_ptr) == b'{'
                                         && buffers.at(BufTy::Sv, *name_bf_ptr + 1) == b'\\'
                                     {
-                                        if buffers.offset(BufTy::Ex, 1) + 2 > buffers.len() {
+                                        if ex_idx + 2 > buffers.len() {
                                             buffers.grow_all();
                                         }
-                                        let offset = buffers.offset(BufTy::Ex, 1);
-                                        buffers.set_at(BufTy::Ex, offset, b'{');
-                                        buffers.set_at(BufTy::Ex, offset + 1, b'\\');
-                                        buffers.set_offset(BufTy::Ex, 1, offset + 2);
+                                        buffers.set_at(BufTy::Ex, ex_idx, b'{');
+                                        buffers.set_at(BufTy::Ex, ex_idx + 1, b'\\');
+                                        ex_idx += 2;
                                         *name_bf_ptr += 2;
                                         let mut nm_brace_level = 1;
                                         while *name_bf_ptr < *name_bf_xptr && nm_brace_level > 0 {
@@ -491,20 +492,16 @@ pub(crate) fn figure_out_the_formatted_name(
                                                 nm_brace_level += 1;
                                             }
 
-                                            if buffers.offset(BufTy::Ex, 1) == buffers.len() {
+                                            if ex_idx == buffers.len() {
                                                 buffers.grow_all();
                                             }
 
                                             buffers.set_at(
                                                 BufTy::Ex,
-                                                buffers.offset(BufTy::Ex, 1),
+                                                ex_idx,
                                                 buffers.at(BufTy::Sv, *name_bf_ptr),
                                             );
-                                            buffers.set_offset(
-                                                BufTy::Ex,
-                                                1,
-                                                buffers.offset(BufTy::Ex, 1) + 1,
-                                            );
+                                            ex_idx += 1;
                                             *name_bf_ptr += 1;
                                         }
                                         break;
@@ -517,22 +514,14 @@ pub(crate) fn figure_out_the_formatted_name(
                             if cur_token < last_token {
                                 if use_default {
                                     if !double_letter {
-                                        if buffers.offset(BufTy::Ex, 1) == buffers.len() {
+                                        if ex_idx == buffers.len() {
                                             buffers.grow_all();
                                         }
-                                        buffers.set_at(
-                                            BufTy::Ex,
-                                            buffers.offset(BufTy::Ex, 1),
-                                            b'.',
-                                        );
-                                        buffers.set_offset(
-                                            BufTy::Ex,
-                                            1,
-                                            buffers.offset(BufTy::Ex, 1) + 1,
-                                        );
+                                        buffers.set_at(BufTy::Ex, ex_idx, b'.');
+                                        ex_idx += 1;
                                     }
 
-                                    if buffers.offset(BufTy::Ex, 1) == buffers.len() {
+                                    if ex_idx == buffers.len() {
                                         buffers.grow_all();
                                     }
 
@@ -541,29 +530,28 @@ pub(crate) fn figure_out_the_formatted_name(
                                     {
                                         buffers.at(BufTy::NameSep, cur_token)
                                     } else if cur_token == last_token - 1
-                                        || (!enough_text_chars(buffers, 3, buf_ptr, brace_level))
+                                        || (!enough_text_chars(
+                                            buffers,
+                                            3,
+                                            buf_ptr,
+                                            ex_idx,
+                                            brace_level,
+                                        ))
                                     {
                                         b'~'
                                     } else {
                                         b' '
                                     };
-                                    buffers.set_at(BufTy::Ex, buffers.offset(BufTy::Ex, 1), c);
-                                    buffers.set_offset(
-                                        BufTy::Ex,
-                                        1,
-                                        buffers.offset(BufTy::Ex, 1) + 1,
-                                    );
+                                    buffers.set_at(BufTy::Ex, ex_idx, c);
+                                    ex_idx += 1;
                                 } else {
-                                    if buffers.offset(BufTy::Ex, 1) + (sp_xptr2 - old_idx)
-                                        > buffers.len()
-                                    {
+                                    if ex_idx + (sp_xptr2 - old_idx) > buffers.len() {
                                         buffers.grow_all();
                                     }
 
-                                    let ptr = buffers.offset(BufTy::Ex, 1);
                                     let tmp_str = &str[old_idx..sp_xptr2];
-                                    buffers.copy_from(BufTy::Ex, ptr, tmp_str);
-                                    buffers.set_offset(BufTy::Ex, 1, ptr + tmp_str.len());
+                                    buffers.copy_from(BufTy::Ex, ex_idx, tmp_str);
+                                    ex_idx += tmp_str.len();
                                     idx = sp_xptr2;
                                 }
                             }
@@ -575,39 +563,37 @@ pub(crate) fn figure_out_the_formatted_name(
                         inner_brace_level -= 1;
                         idx += 1;
                         if inner_brace_level > 0 {
-                            if buffers.offset(BufTy::Ex, 1) == buffers.len() {
+                            if ex_idx == buffers.len() {
                                 buffers.grow_all();
                             }
-                            buffers.set_at(BufTy::Ex, buffers.offset(BufTy::Ex, 1), b'}');
-                            buffers.set_offset(BufTy::Ex, 1, buffers.offset(BufTy::Ex, 1) + 1);
+                            buffers.set_at(BufTy::Ex, ex_idx, b'}');
+                            ex_idx += 1;
                         }
                     } else if str[idx] == b'{' {
                         inner_brace_level += 1;
                         idx += 1;
-                        if buffers.offset(BufTy::Ex, 1) == buffers.len() {
+                        if ex_idx == buffers.len() {
                             buffers.grow_all();
                         }
-                        buffers.set_at(BufTy::Ex, buffers.offset(BufTy::Ex, 1), b'{');
-                        buffers.set_offset(BufTy::Ex, 1, buffers.offset(BufTy::Ex, 1) + 1);
+                        buffers.set_at(BufTy::Ex, ex_idx, b'{');
+                        ex_idx += 1;
                     } else {
-                        if buffers.offset(BufTy::Ex, 1) == buffers.len() {
+                        if ex_idx == buffers.len() {
                             buffers.grow_all();
                         }
-                        buffers.set_at(BufTy::Ex, buffers.offset(BufTy::Ex, 1), str[idx]);
-                        buffers.set_offset(BufTy::Ex, 1, buffers.offset(BufTy::Ex, 1) + 1);
+                        buffers.set_at(BufTy::Ex, ex_idx, str[idx]);
+                        ex_idx += 1;
                         idx += 1;
                     }
                 }
-                if buffers.offset(BufTy::Ex, 1) > 0
-                    && buffers.at(BufTy::Ex, buffers.offset(BufTy::Ex, 1) - 1) == b'~'
-                {
-                    buffers.set_offset(BufTy::Ex, 1, buffers.offset(BufTy::Ex, 1) - 1);
-                    if buffers.at(BufTy::Ex, buffers.offset(BufTy::Ex, 1) - 1) == b'~' {
-                    } else if !enough_text_chars(buffers, 3, buf_ptr, brace_level) {
-                        buffers.set_offset(BufTy::Ex, 1, buffers.offset(BufTy::Ex, 1) + 1);
+                if ex_idx > 0 && buffers.at(BufTy::Ex, ex_idx - 1) == b'~' {
+                    ex_idx -= 1;
+                    if buffers.at(BufTy::Ex, ex_idx - 1) == b'~' {
+                    } else if !enough_text_chars(buffers, 3, buf_ptr, ex_idx, brace_level) {
+                        ex_idx += 1;
                     } else {
-                        buffers.set_at(BufTy::Ex, buffers.offset(BufTy::Ex, 1), b' ');
-                        buffers.set_offset(BufTy::Ex, 1, buffers.offset(BufTy::Ex, 1) + 1);
+                        buffers.set_at(BufTy::Ex, ex_idx, b' ');
+                        ex_idx += 1;
                     }
                 }
             }
@@ -615,11 +601,11 @@ pub(crate) fn figure_out_the_formatted_name(
             braces_unbalanced_complaint(ctx, pool, cites, s1)?;
             idx += 1;
         } else {
-            if buffers.offset(BufTy::Ex, 1) == buffers.len() {
+            if ex_idx == buffers.len() {
                 buffers.grow_all();
             }
-            buffers.set_at(BufTy::Ex, buffers.offset(BufTy::Ex, 1), str[idx]);
-            buffers.set_offset(BufTy::Ex, 1, buffers.offset(BufTy::Ex, 1) + 1);
+            buffers.set_at(BufTy::Ex, ex_idx, str[idx]);
+            ex_idx += 1;
             idx += 1;
         }
     }
@@ -628,22 +614,9 @@ pub(crate) fn figure_out_the_formatted_name(
         braces_unbalanced_complaint(ctx, pool, cites, s1)?;
     }
 
-    buffers.set_init(BufTy::Ex, buffers.offset(BufTy::Ex, 1));
+    buffers.set_init(BufTy::Ex, ex_idx);
 
     Ok(())
-}
-
-pub(crate) fn add_buf_pool(pool: &StringPool, buffers: &mut GlobalBuffer, str: StrNumber) {
-    let str = pool.get_str(str);
-
-    if buffers.init(BufTy::Ex) + str.len() > buffers.len() {
-        buffers.grow_all();
-    }
-
-    let start = buffers.init(BufTy::Ex);
-    buffers.copy_from(BufTy::Ex, start, str);
-    buffers.set_offset(BufTy::Ex, 1, start + str.len());
-    buffers.set_init(BufTy::Ex, start + str.len());
 }
 
 pub(crate) fn add_out_pool(
@@ -733,7 +706,6 @@ fn add_pool_buf_and_push(
     buffers: &mut GlobalBuffer,
     pool: &mut StringPool,
 ) -> Result<(), BibtexError> {
-    buffers.set_offset(BufTy::Ex, 1, buffers.init(BufTy::Ex));
     let str = &buffers.buffer(BufTy::Ex)[0..buffers.init(BufTy::Ex)];
     let val = ExecVal::String(pool.add_string(str));
     ctx.push_stack(val);

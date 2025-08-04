@@ -65,28 +65,31 @@ impl<'a> Scan<'a> {
     }
 
     pub fn scan_till(&self, buffers: &mut GlobalBuffer, last: BufPointer) -> bool {
-        buffers.set_offset(BufTy::Base, 1, buffers.offset(BufTy::Base, 2));
+        let start = buffers.offset(BufTy::Base, 2);
+        buffers.set_offset(BufTy::Base, 1, start);
 
-        let mut idx = buffers.offset(BufTy::Base, 2);
-        while idx < last && !self.match_char(buffers.at(BufTy::Base, idx)) {
-            idx += 1;
-        }
-        buffers.set_offset(BufTy::Base, 2, idx);
+        let idx = start;
+        let new_idx = buffers.buffer(BufTy::Base)[idx..last]
+            .iter()
+            .position(|c| self.match_char(*c))
+            .map(|idx| idx + start);
+        buffers.set_offset(BufTy::Base, 2, new_idx.unwrap_or(last));
 
-        idx < last
+        new_idx.is_some()
     }
 
     pub fn scan_till_nonempty(&self, buffers: &mut GlobalBuffer, last: BufPointer) -> bool {
         let start = buffers.offset(BufTy::Base, 2);
         buffers.set_offset(BufTy::Base, 1, start);
 
-        let mut idx = start;
-        while idx < last && !self.match_char(buffers.at(BufTy::Base, idx)) {
-            idx += 1;
-        }
-        buffers.set_offset(BufTy::Base, 2, idx);
+        let idx = start;
+        let new_idx = buffers.buffer(BufTy::Base)[idx..last]
+            .iter()
+            .position(|c| self.match_char(*c))
+            .map(|idx| idx + start);
+        buffers.set_offset(BufTy::Base, 2, new_idx.unwrap_or(last));
 
-        idx - start != 0
+        new_idx.is_none_or(|end| end != start)
     }
 }
 
@@ -1082,21 +1085,19 @@ pub(crate) fn enough_text_chars(
     buffers: &GlobalBuffer,
     enough_chars: BufPointer,
     buf_start: BufPointer,
+    idx: usize,
     brace_level: &mut i32,
 ) -> bool {
     let mut num_text_chars = 0;
     let mut buf_cur = buf_start;
 
-    while buf_cur < buffers.offset(BufTy::Ex, 1) && num_text_chars < enough_chars {
+    while buf_cur < idx && num_text_chars < enough_chars {
         buf_cur += 1;
         if buffers.at(BufTy::Ex, buf_cur - 1) == b'{' {
             *brace_level += 1;
-            if *brace_level == 1
-                && buf_cur < buffers.offset(BufTy::Ex, 1)
-                && buffers.at(BufTy::Ex, buf_cur) == b'\\'
-            {
+            if *brace_level == 1 && buf_cur < idx && buffers.at(BufTy::Ex, buf_cur) == b'\\' {
                 buf_cur += 1;
-                while buf_cur < buffers.offset(BufTy::Ex, 1) && *brace_level > 0 {
+                while buf_cur < idx && *brace_level > 0 {
                     match buffers.at(BufTy::Ex, buf_cur) {
                         b'}' => *brace_level -= 1,
                         b'{' => *brace_level += 1,
