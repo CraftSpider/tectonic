@@ -138,6 +138,8 @@ extern "C" {
 
 extern const char *_ttbc_get_error_message(void);
 
+extern ttbc_state_t *_ttbc_get_core_state(void);
+
 /**
  * Issue a warning.
  *
@@ -256,6 +258,11 @@ ssize_t ttbc_get_last_input_abspath(ttbc_state_t *es, uint8_t *buffer, size_t le
  * Get the size of a Tectonic input file.
  */
 size_t ttbc_input_get_size(ttbc_state_t *es, Option_InputId handle);
+
+/**
+ * Get the size of a Tectonic input file quickly
+ */
+size_t ttbc_input_fast_size(ttbc_state_t *es, const char *name, ttbc_file_format format);
 
 /**
  * Get the modification time of a Tectonic input file.

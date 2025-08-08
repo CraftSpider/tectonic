@@ -258,6 +258,13 @@ ttstub_input_get_size(rust_input_handle_t handle)
 }
 
 
+size_t
+ttstub_input_fast_size(char const *path, ttbc_file_format format)
+{
+    return ttbc_input_fast_size(tectonic_global_bridge_core, path, format);
+}
+
+
 time_t
 ttstub_input_get_mtime(rust_input_handle_t handle)
 {

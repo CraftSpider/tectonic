@@ -664,6 +664,36 @@ impl<'a> CoreBridgeState<'a> {
         }
     }
 
+    /// Get the size of an input when you don't need to also read or write it. Faster than opening,
+    /// getting the size, then closing.
+    pub fn input_fast_size(&mut self, name: &str, format: FileFormat) -> Option<usize> {
+        let (mut ih, path) = match self.input_open_name_format(name, format) {
+            OpenResult::Ok(tup) => tup,
+            OpenResult::NotAvailable => {
+                return None;
+            }
+            OpenResult::Err(e) => {
+                tt_warning!(self.status, "open of input {} failed", name; e);
+                return None;
+            }
+        };
+
+        self.latest_input_path = path;
+
+        let size = match ih.get_size() {
+            Ok(s) => s,
+            Err(e) => {
+                tt_warning!(self.status, "failed to get the size of an input"; e);
+                0
+            }
+        };
+
+        let (name, digest_opt) = ih.into_name_digest();
+        self.hooks.event_input_closed(name, digest_opt, self.status);
+
+        Some(size)
+    }
+
     fn input_get_mtime(&mut self, handle: InputId) -> i64 {
         if let Some(mtime) = self.fs_emulation_settings.mtime_override {
             return mtime;
@@ -1090,6 +1120,18 @@ pub extern "C" fn ttbc_input_get_size(
     handle: Option<InputId>,
 ) -> libc::size_t {
     es.input_get_size(handle.expect("valid handle"))
+}
+
+/// Get the size of a Tectonic input file quickly
+#[no_mangle]
+pub unsafe extern "C" fn ttbc_input_fast_size(
+    es: &mut CoreBridgeState,
+    name: *const libc::c_char,
+    format: FileFormat,
+) -> libc::size_t {
+    let rname = CStr::from_ptr(name).to_string_lossy();
+    es.input_fast_size(&rname, format)
+        .unwrap_or(libc::size_t::MAX)
 }
 
 /// Get the modification time of a Tectonic input file.

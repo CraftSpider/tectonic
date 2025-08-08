@@ -240,6 +240,7 @@ rust_input_handle_t ttstub_input_open(char const *path, ttbc_file_format format,
 rust_input_handle_t ttstub_input_open_primary(void);
 ssize_t ttstub_get_last_input_abspath(char *buffer, size_t len);
 size_t ttstub_input_get_size(rust_input_handle_t handle);
+size_t ttstub_input_fast_size(char const *path, ttbc_file_format format);
 time_t ttstub_input_get_mtime(rust_input_handle_t handle);
 size_t ttstub_input_seek(rust_input_handle_t handle, ssize_t offset, int whence);
 ssize_t ttstub_input_read(rust_input_handle_t handle, char *data, size_t len);

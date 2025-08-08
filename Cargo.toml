@@ -62,6 +62,9 @@ members = [
     "tests/bundle_env_overrides_test",
 ]
 
+[profile.release]
+debug = true
+
 [workspace.lints.rust]
 # FIXME(CraftSpider): Switch from error-chain to a newer package, as it's a deprecated project
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(has_error_description_deprecated)'] }

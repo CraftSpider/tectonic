@@ -185,19 +185,15 @@ getfilesize(str_number s)
 {
   char *name;
   size_t file_len, text_len;
-  rust_input_handle_t handle;
   char buf[20];
   int i;
 
   name = gettexstring(s);
-  handle = ttstub_input_open(name, TTBC_FILE_FORMAT_TEX, 0);
+  file_len = ttstub_input_fast_size(name, TTBC_FILE_FORMAT_TEX);
   free(name);
 
-  if (handle == INVALID_HANDLE)
+  if (file_len == SIZE_MAX)
     return; /* => evaluate to the empty string; intentional */
-
-  file_len = ttstub_input_get_size(handle);
-  ttstub_input_close(handle);
 
   i = snprintf(buf, sizeof(buf), "%lu", (long unsigned int) file_len);
   check_nprintf(i, sizeof(buf));
