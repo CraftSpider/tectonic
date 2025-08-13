@@ -62,7 +62,7 @@ members = [
     "tests/bundle_env_overrides_test",
 ]
 
-[profile.release]
+[profile.bench]
 debug = true
 
 [workspace.lints.rust]
@@ -146,6 +146,14 @@ profile = []
 [dev-dependencies]
 filetime = "^0.2"
 tempfile = "^3.1"
+criterion = "0.5"
+
+[target.'cfg(unix)'.dev-dependencies]
+pprof = { version = "0.15", features = ["criterion", "flamegraph"] }
+
+[[bench]]
+name = "xenia"
+harness = false
 
 [package.metadata.vcpkg]
 git = "https://github.com/microsoft/vcpkg"

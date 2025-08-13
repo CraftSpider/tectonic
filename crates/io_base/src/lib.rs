@@ -50,6 +50,30 @@ pub enum TectonicIoError {
     PathForbidden(PathBuf),
 }
 
+/// Combined metadata used by Tectonic's I/O system. Used for cases where we only care about the
+/// metadata, not the file contents.
+pub struct InputMetadata {
+    size: Option<usize>,
+    mtime: Option<i64>,
+}
+
+impl InputMetadata {
+    fn new(size: Option<usize>, mtime: Option<i64>) -> InputMetadata {
+        InputMetadata { size, mtime }
+    }
+
+    /// Get the size of the stream, or `None` if the operation isn't well-defined for this stream.
+    pub fn size(&self) -> Option<usize> {
+        self.size
+    }
+
+    /// Get the modification time of this file as a Unix time, or `None` if that isn't meaningfully
+    /// defined for this stream.
+    pub fn unix_mtime(&self) -> Option<i64> {
+        self.mtime
+    }
+}
+
 /// An extension to the basic Read trait supporting additional features
 /// needed for Tectonic's I/O system.
 pub trait InputFeatures: Read {
@@ -529,6 +553,38 @@ pub trait IoProvider: AsIoProviderMut {
         _status: &mut dyn StatusBackend,
     ) -> Result<()> {
         bail!("this I/O layer cannot save format files");
+    }
+
+    /// Get metadata for an input. More efficient than opening + closing for file inputs.
+    fn input_metadata(
+        &mut self,
+        name: &str,
+        status: &mut dyn StatusBackend,
+    ) -> OpenResult<InputMetadata> {
+        let mut input = match self.input_open_name(name, status) {
+            OpenResult::Ok(file) => file,
+            OpenResult::NotAvailable => return OpenResult::NotAvailable,
+            OpenResult::Err(e) => return OpenResult::Err(e),
+        };
+
+        let size = match input.get_size() {
+            Ok(size) => Some(size),
+            Err(e)
+                if matches!(
+                    e.downcast_ref::<TectonicIoError>(),
+                    Some(TectonicIoError::NotSizeable)
+                ) =>
+            {
+                None
+            }
+            Err(e) => return OpenResult::Err(e),
+        };
+        let mtime = match input.get_unix_mtime() {
+            Ok(mtime) => mtime,
+            Err(e) => return OpenResult::Err(e),
+        };
+
+        OpenResult::Ok(InputMetadata::new(size, mtime))
     }
 }
 

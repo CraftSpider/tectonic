@@ -47,8 +47,8 @@ use std::{
 };
 use tectonic_errors::prelude::*;
 use tectonic_io_base::{
-    digest::DigestData, normalize_tex_path, InputFeatures, InputHandle, IoProvider, OpenResult,
-    OutputHandle,
+    digest::DigestData, normalize_tex_path, InputFeatures, InputHandle, InputMetadata, IoProvider,
+    OpenResult, OutputHandle,
 };
 use tectonic_status_base::{tt_error, tt_warning, MessageKind, StatusBackend};
 
@@ -666,32 +666,29 @@ impl<'a> CoreBridgeState<'a> {
 
     /// Get the size of an input when you don't need to also read or write it. Faster than opening,
     /// getting the size, then closing.
-    pub fn input_fast_size(&mut self, name: &str, format: FileFormat) -> Option<usize> {
-        let (mut ih, path) = match self.input_open_name_format(name, format) {
-            OpenResult::Ok(tup) => tup,
-            OpenResult::NotAvailable => {
-                return None;
+    pub fn input_metadata(&mut self, name: &str, format: FileFormat) -> OpenResult<InputMetadata> {
+        let io = self.hooks.io();
+
+        match io.input_metadata(name, self.status) {
+            OpenResult::NotAvailable => {}
+            r => return r,
+        }
+
+        // It wasn't available under the immediately-given name. Try adding
+        // extensions. Note that we always add a new extension here, even if the
+        // filename already has one. E.g., lipsum in TeXLive 2020 asks for
+        // `lipsum.ltd.tex` under the name `lipsum.ltd`.
+
+        for e in format.extensions() {
+            let ext = format!("{name}.{e}");
+
+            match io.input_metadata(&ext, self.status) {
+                OpenResult::NotAvailable => {}
+                r => return r,
             }
-            OpenResult::Err(e) => {
-                tt_warning!(self.status, "open of input {} failed", name; e);
-                return None;
-            }
-        };
+        }
 
-        self.latest_input_path = path;
-
-        let size = match ih.get_size() {
-            Ok(s) => s,
-            Err(e) => {
-                tt_warning!(self.status, "failed to get the size of an input"; e);
-                0
-            }
-        };
-
-        let (name, digest_opt) = ih.into_name_digest();
-        self.hooks.event_input_closed(name, digest_opt, self.status);
-
-        Some(size)
+        OpenResult::NotAvailable
     }
 
     fn input_get_mtime(&mut self, handle: InputId) -> i64 {
@@ -1130,8 +1127,11 @@ pub unsafe extern "C" fn ttbc_input_fast_size(
     format: FileFormat,
 ) -> libc::size_t {
     let rname = CStr::from_ptr(name).to_string_lossy();
-    es.input_fast_size(&rname, format)
-        .unwrap_or(libc::size_t::MAX)
+    match es.input_metadata(&rname, format) {
+        OpenResult::Ok(meta) => meta.size().unwrap_or(libc::size_t::MAX),
+        OpenResult::NotAvailable => libc::size_t::MAX,
+        OpenResult::Err(_) => libc::size_t::MAX,
+    }
 }
 
 /// Get the modification time of a Tectonic input file.
