@@ -33,7 +33,7 @@ use tectonic_io_base::{
     digest::DigestData,
     filesystem::{FilesystemIo, FilesystemPrimaryInputIo},
     stdstreams::{BufferedPrimaryIo, GenuineStdoutIo},
-    InputHandle, IoProvider, OpenResult, OutputHandle,
+    InputHandle, InputMetadata, IoProvider, OpenResult, OutputHandle,
 };
 use which::which;
 
@@ -632,6 +632,14 @@ impl IoProvider for BridgeState {
         }
 
         r
+    }
+
+    fn input_metadata(
+        &mut self,
+        name: &str,
+        status: &mut dyn StatusBackend,
+    ) -> OpenResult<InputMetadata> {
+        bridgestate_ioprovider_cascade!(self, input_metadata(name, status));
     }
 }
 

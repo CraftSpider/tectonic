@@ -14,8 +14,8 @@ use tectonic_errors::Result;
 use tectonic_status_base::{tt_warning, StatusBackend};
 
 use super::{
-    try_open_file, InputFeatures, InputHandle, InputOrigin, IoProvider, OpenResult, OutputHandle,
-    TectonicIoError,
+    try_open_file, InputFeatures, InputHandle, InputMetadata, InputOrigin, IoProvider, OpenResult,
+    OutputHandle, TectonicIoError,
 };
 
 /// FilesystemPrimaryInputIo is an I/O provider that provides the TeX "primary input"
@@ -235,6 +235,67 @@ impl IoProvider for FilesystemIo {
         // Good to go.
         let handle = InputHandle::new(name, BufReader::new(f), InputOrigin::Filesystem);
         OpenResult::Ok((handle, Some(path)))
+    }
+
+    fn input_metadata(
+        &mut self,
+        name: &str,
+        status: &mut dyn StatusBackend,
+    ) -> OpenResult<InputMetadata> {
+        let path = match self.construct_path(name) {
+            Ok(p) => p,
+            Err(e) => return OpenResult::Err(e),
+        };
+
+        // We allow users to "hide" certain paths to make it so that users can,
+        // e.g., run a "first pass" on an input even if an `.aux` file is stored
+        // on the filesystem for subsequent processing. Note that this test is
+        // purely textual, in the "TeX space" of paths, and won't handle things
+        // like directory trees. We could be cleverer here (e.g. glob support),
+        // but probably don't want to try to handle stuff like symlink
+        // resolution since that will force us to touch the filesystem for every
+        // I/O probe.
+        if self.hidden_input_paths.contains(&path) {
+            return OpenResult::NotAvailable;
+        }
+
+        // Report the absolute path only if we're able to open it, since the xetex engine tries to
+        // read a lot of places.
+        //
+        // We check with the original requested name since construct_path might make relative paths
+        // into absolute paths (e.g. when self.root is absolute).
+        let name_path = Path::new(name);
+        if name_path.is_absolute() && !self.reported_paths.contains(name_path) {
+            tt_warning!(
+                status,
+                "accessing absolute path `{}`; build may not be reproducible in other environments",
+                name_path.display()
+            );
+            self.reported_paths.insert(name_path.to_owned());
+        }
+
+        // Issue #754 - if you run Tectonic on an input that is located in a
+        // directory containing a sub-directory named `latex`, you get a
+        // surprising error message because the engine tries to read that
+        // directory as the format file. I think the correct behavior here is to
+        // treat directories as NotAvailable for the purposes of the I/O stack.
+        let md = match path.metadata() {
+            Ok(m) => m,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                return OpenResult::NotAvailable;
+            }
+            Err(e) => return OpenResult::Err(e.into()),
+        };
+
+        if md.is_dir() {
+            return OpenResult::NotAvailable;
+        }
+
+        // Good to go.
+        match md.try_into() {
+            Ok(val) => OpenResult::Ok(val),
+            Err(e) => OpenResult::Err(e),
+        }
     }
 }
 

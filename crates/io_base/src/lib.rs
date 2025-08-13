@@ -11,6 +11,7 @@
 //! higher levels of Tectonic to determine when the engine needs to be re-run.
 
 use sha2::Digest;
+use std::fs::Metadata;
 use std::{
     borrow::Cow,
     fs::File,
@@ -71,6 +72,21 @@ impl InputMetadata {
     /// defined for this stream.
     pub fn unix_mtime(&self) -> Option<i64> {
         self.mtime
+    }
+}
+
+impl TryFrom<Metadata> for InputMetadata {
+    type Error = Error;
+
+    fn try_from(value: Metadata) -> Result<Self, Self::Error> {
+        let sys_time = value.modified()?;
+
+        let dur = sys_time.duration_since(std::time::SystemTime::UNIX_EPOCH)?;
+        let modified = dur.as_secs() as i64;
+        Ok(InputMetadata::new(
+            Some(value.len() as usize),
+            Some(modified),
+        ))
     }
 }
 
@@ -555,7 +571,7 @@ pub trait IoProvider: AsIoProviderMut {
         bail!("this I/O layer cannot save format files");
     }
 
-    /// Get metadata for an input. More efficient than opening + closing for file inputs.
+    /// Get metadata for an input. More efficient than opening and then closing immediately.
     fn input_metadata(
         &mut self,
         name: &str,
@@ -639,6 +655,14 @@ impl<P: IoProvider + ?Sized> IoProvider for Box<P> {
         status: &mut dyn StatusBackend,
     ) -> Result<()> {
         (**self).write_format(name, data, status)
+    }
+
+    fn input_metadata(
+        &mut self,
+        name: &str,
+        status: &mut dyn StatusBackend,
+    ) -> OpenResult<InputMetadata> {
+        (**self).input_metadata(name, status)
     }
 }
 

@@ -8,6 +8,7 @@
 //! [`BundleCache`].
 
 use crate::{Bundle, CachableBundle, FileIndex, FileInfo};
+use std::io::ErrorKind;
 use std::{
     fs::{self, File},
     io::{self, BufReader, Read, Write},
@@ -19,7 +20,7 @@ use tectonic_errors::{anyhow::Context, prelude::*};
 use tectonic_io_base::{
     app_dirs,
     digest::{self, DigestData},
-    InputHandle, InputOrigin, IoProvider, OpenResult,
+    InputHandle, InputMetadata, InputOrigin, IoProvider, OpenResult,
 };
 use tectonic_status_base::StatusBackend;
 
@@ -218,53 +219,56 @@ impl<'this, T: FileIndex<'this>> BundleCache<'this, T> {
         // It would be nice to assume that the bundle index is never initialized
         // before this function is called, but we can't do that. Unlike ttb,
         // itar bundles cannot retrieve the bundle hash without loading the index.
-        if target.exists() {
-            if self.bundle.index().is_initialized() {
-                return Ok(());
+        let index = File::open(&target);
+
+        match index {
+            Ok(mut file) => {
+                if self.bundle.index().is_initialized() {
+                    return Ok(());
+                }
+
+                // Initialize bundle index using cached file
+                self.bundle.initialize_index(&mut file).with_context(|| {
+                    format!("while inititalizing index using cached {target:?}")
+                })?;
             }
+            Err(e) if e.kind() == ErrorKind::NotFound => {
+                // Download index
 
-            // Initialize bundle index using cached file
-            let mut file = File::open(&target)
-                .with_context(|| format!("while opening index {target:?} in cache"))?;
-            self.bundle
-                .initialize_index(&mut file)
-                .with_context(|| format!("while inititalizing index using cached {target:?}"))?;
-        } else {
-            // Download index
+                // We first download to a temporary file, rename to target
+                // Makes sure that parallel runs of tectonic don't break the index
+                let tmp_target = self.cache_root.join(format!(
+                    "data/{}.index-tmp-pid{}",
+                    self.bundle_hash,
+                    process::id()
+                ));
 
-            // We first download to a temporary file, rename to target
-            // Makes sure that parallel runs of tectonic don't break the index
-            let tmp_target = self.cache_root.join(format!(
-                "data/{}.index-tmp-pid{}",
-                self.bundle_hash,
-                process::id()
-            ));
+                let mut reader = self
+                    .bundle
+                    .get_index_reader()
+                    .context("while getting index reader")?;
+                let mut file = File::create(&tmp_target)
+                    .with_context(|| format!("while creating index {tmp_target:?} in cache"))?;
+                io::copy(&mut reader, &mut file)
+                    .with_context(|| format!("while writing index {tmp_target:?} in cache"))?;
+                drop(file);
 
-            let mut reader = self
-                .bundle
-                .get_index_reader()
-                .context("while getting index reader")?;
-            let mut file = File::create(&tmp_target)
-                .with_context(|| format!("while creating index {tmp_target:?} in cache"))?;
-            io::copy(&mut reader, &mut file)
-                .with_context(|| format!("while writing index {tmp_target:?} in cache"))?;
-            drop(file);
+                fs::rename(&tmp_target, &target).with_context(|| {
+                    format!("while renaming index {tmp_target:?} to {target:?} in cache")
+                })?;
 
-            fs::rename(&tmp_target, &target).with_context(|| {
-                format!("while renaming index {tmp_target:?} to {target:?} in cache")
-            })?;
+                if self.bundle.index().is_initialized() {
+                    return Ok(());
+                }
 
-            if self.bundle.index().is_initialized() {
-                return Ok(());
+                let mut file = File::open(&target)
+                    .with_context(|| format!("while opening index from {target:?} in cache"))?;
+                self.bundle
+                    .initialize_index(&mut file)
+                    .with_context(|| format!("while initializing index {target:?} in cache"))?;
             }
-
-            let mut file = File::open(&target)
-                .with_context(|| format!("while opening index from {target:?} in cache"))?;
-            self.bundle
-                .initialize_index(&mut file)
-                .with_context(|| format!("while initializing index {target:?} in cache"))?;
+            Err(e) => Err(e).with_context(|| format!("while opening index {target:?} in cache"))?,
         }
-
         Ok(())
     }
 
@@ -272,7 +276,7 @@ impl<'this, T: FileIndex<'this>> BundleCache<'this, T> {
     /// This returns (in_cache, info), where in_cache is true
     /// if this file is already in our cache and can be retrieved
     /// without touching the backing bundle.
-    fn get_fileinfo(&mut self, name: &str) -> OpenResult<(bool, T::InfoType)> {
+    fn get_fileinfo(&mut self, name: &str) -> OpenResult<T::InfoType> {
         if let Err(e) = self.ensure_index() {
             return OpenResult::Err(e);
         };
@@ -282,8 +286,7 @@ impl<'this, T: FileIndex<'this>> BundleCache<'this, T> {
             None => return OpenResult::NotAvailable,
         };
 
-        let target = self.get_file_path(&info);
-        OpenResult::Ok((target.exists(), info))
+        OpenResult::Ok(info)
     }
 
     /// Fetch a file from the bundle backing this cache.
@@ -292,22 +295,25 @@ impl<'this, T: FileIndex<'this>> BundleCache<'this, T> {
         &mut self,
         info: T::InfoType,
         status: &mut dyn StatusBackend,
-    ) -> OpenResult<PathBuf> {
+    ) -> OpenResult<File> {
         let target = self.get_file_path(&info);
-        match fs::create_dir_all(target.parent().unwrap()) {
-            Ok(()) => {}
-            Err(e) => return OpenResult::Err(e.into()),
-        };
 
         // Already in the cache?
-        if target.exists() {
-            return OpenResult::Ok(target);
+        match File::open(&target) {
+            Ok(file) => return OpenResult::Ok(file),
+            Err(e) if e.kind() == ErrorKind::NotFound => (),
+            Err(e) => return OpenResult::Err(e.into()),
         }
 
         // No, it's not. Are we in cache-only mode?
         if self.only_cached {
             return OpenResult::NotAvailable;
         }
+
+        match fs::create_dir_all(target.parent().unwrap()) {
+            Ok(()) => {}
+            Err(e) => return OpenResult::Err(e.into()),
+        };
 
         // Get the file.
         let mut handle = match self.bundle.open_fileinfo(&info, status) {
@@ -326,7 +332,10 @@ impl<'this, T: FileIndex<'this>> BundleCache<'this, T> {
             return OpenResult::Err(e.into());
         };
 
-        OpenResult::Ok(target)
+        match File::open(&target) {
+            Ok(file) => OpenResult::Ok(file),
+            Err(e) => OpenResult::Err(e.into()),
+        }
     }
 }
 
@@ -336,20 +345,14 @@ impl<'this, T: FileIndex<'this>> IoProvider for BundleCache<'this, T> {
         name: &str,
         status: &mut dyn StatusBackend,
     ) -> OpenResult<InputHandle> {
-        let path = match self.get_fileinfo(name) {
+        let f = match self.get_fileinfo(name) {
             OpenResult::NotAvailable => return OpenResult::NotAvailable,
             OpenResult::Err(e) => return OpenResult::Err(e),
-            OpenResult::Ok((true, f)) => self.get_file_path(&f),
-            OpenResult::Ok((false, f)) => match self.fetch_file(f, status) {
+            OpenResult::Ok(f) => match self.fetch_file(f, status) {
                 OpenResult::Ok(p) => p,
                 OpenResult::NotAvailable => return OpenResult::NotAvailable,
                 OpenResult::Err(e) => return OpenResult::Err(e),
             },
-        };
-
-        let f = match File::open(path) {
-            Ok(f) => f,
-            Err(e) => return OpenResult::Err(e.into()),
         };
 
         OpenResult::Ok(InputHandle::new_read_only(
@@ -357,6 +360,32 @@ impl<'this, T: FileIndex<'this>> IoProvider for BundleCache<'this, T> {
             BufReader::new(f),
             InputOrigin::Other,
         ))
+    }
+
+    fn input_metadata(
+        &mut self,
+        name: &str,
+        status: &mut dyn StatusBackend,
+    ) -> OpenResult<InputMetadata> {
+        let f = match self.get_fileinfo(name) {
+            OpenResult::NotAvailable => return OpenResult::NotAvailable,
+            OpenResult::Err(e) => return OpenResult::Err(e),
+            OpenResult::Ok(f) => match self.fetch_file(f, status) {
+                OpenResult::Ok(p) => p,
+                OpenResult::NotAvailable => return OpenResult::NotAvailable,
+                OpenResult::Err(e) => return OpenResult::Err(e),
+            },
+        };
+
+        let md = match f.metadata() {
+            Ok(md) => md,
+            Err(e) => return OpenResult::Err(e.into()),
+        };
+
+        match md.try_into() {
+            Ok(val) => OpenResult::Ok(val),
+            Err(e) => OpenResult::Err(e),
+        }
     }
 }
 
