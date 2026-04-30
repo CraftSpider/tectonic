@@ -214,7 +214,7 @@ hb_tag_t getIndFeature(XeTeXFont font, hb_tag_t script, hb_tag_t language, unsig
 
 const char *getGlyphName(XeTeXFont font, uint16_t gid, int *len);
 
-void freeGlyphName(char *name);
+void freeGlyphName(const char *name);
 
 float ttxl_font_units_to_points(XeTeXFont font, float units);
 

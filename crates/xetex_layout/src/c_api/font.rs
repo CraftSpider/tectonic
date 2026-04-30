@@ -115,8 +115,8 @@ pub unsafe extern "C" fn getGlyphName(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn freeGlyphName(name: *mut libc::c_char) {
-    let _ = CString::from_raw(name);
+pub unsafe extern "C" fn freeGlyphName(name: *const libc::c_char) {
+    let _ = CString::from_raw(name.cast_mut());
 }
 
 #[no_mangle]

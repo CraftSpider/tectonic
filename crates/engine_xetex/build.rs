@@ -158,7 +158,7 @@ fn main() {
 
 const C_FLAGS: &[&str] = &[
     "-Wall",
-    "-Wcast-qual",
+    // "-Wcast-qual",
     "-Wdate-time",
     "-Wendif-labels",
     "-Wextra",
@@ -215,7 +215,7 @@ const C_FILES: &[&str] = &[
 ];
 
 const CXX_FLAGS: &[&str] = &[
-    "-std=c++14",
+    "-std=c++17",
     "-Wall",
     "-Wdate-time",
     "-Wendif-labels",

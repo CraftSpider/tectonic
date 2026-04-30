@@ -415,7 +415,7 @@ findDictionaryInArray(CFArrayRef array, const void* nameKey, const char* name, i
     if (array) {
         CFStringRef itemName;
         CFIndex i;
-        itemName = CFStringCreateWithBytes(NULL, (UInt8 *) name, nameLength,
+        itemName = CFStringCreateWithBytes(NULL, (const UInt8 *) name, nameLength,
                                            kCFStringEncodingUTF8, false);
         for (i = 0; i < CFArrayGetCount(array); i++) {
             CFDictionaryRef item = CFArrayGetValueAtIndex(array, i);
@@ -526,7 +526,6 @@ loadAATfont(CTFontDescriptorRef descriptor, int32_t scaled_size, const char* cp1
                 ++cp3;
                 while (cp3 < cp2) {
                     CFNumberRef selector;
-                    int disable = 0;
                     const char* cp4;
                     // skip leading whitespace
                     while (*cp3 == ' ' || *cp3 == '\t')
@@ -534,7 +533,6 @@ loadAATfont(CTFontDescriptorRef descriptor, int32_t scaled_size, const char* cp1
 
                     // possibly multiple settings...
                     if (*cp3 == '!') { // check for negation
-                        disable = 1;
                         ++cp3;
                     }
 

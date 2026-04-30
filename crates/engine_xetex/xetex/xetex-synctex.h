@@ -53,6 +53,8 @@ void synctex_terminate(bool log_opened);
 /*  Free all memory used, close and remove the file if any. */
 void synctex_abort(bool log_opened);
 
+rust_output_handle_t synctex_prepare_content(void);
+
 /*  Send this message when starting a new input.  */
 void synctex_start_input(void);
 

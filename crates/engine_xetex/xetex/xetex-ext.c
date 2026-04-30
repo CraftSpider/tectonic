@@ -1034,7 +1034,7 @@ ot_font_get_3(int32_t what, void* pEngine, int32_t param1, int32_t param2, int32
 void
 gr_print_font_name(int32_t what, void* pEngine, int32_t param1, int32_t param2)
 {
-    char* name = NULL;
+    const char* name = NULL;
     XeTeXLayoutEngine engine = (XeTeXLayoutEngine)pEngine;
     switch (what) {
         case XETEX_FEATURE_NAME_CODE:
@@ -1047,7 +1047,7 @@ gr_print_font_name(int32_t what, void* pEngine, int32_t param1, int32_t param2)
 
     if (name != NULL) {
         print_c_string(name);
-        gr_label_destroy(name);
+        gr_label_destroy((void*)name);
     }
 }
 
@@ -1161,9 +1161,9 @@ int
 make_font_def(int32_t f)
 {
     uint16_t flags = 0;
-    uint32_t rgba;
+    uint32_t rgba = 0;
     Fixed size;
-    char* filename;
+    const char* filename;
     uint32_t index;
     uint8_t filenameLen;
     int fontDefLength;
@@ -1306,7 +1306,7 @@ make_font_def(int32_t f)
         cp += 4;
     }
 
-    freeFontFilename((char*) filename);
+    freeFontFilename(filename);
 
     return fontDefLength;
 }
