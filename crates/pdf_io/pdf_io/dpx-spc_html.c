@@ -95,36 +95,36 @@ parse_key_val (const char **pp, const char *endptr, char **kp, char **vp)
 
   for (p = *pp ; p < endptr && isspace((unsigned char)*p); p++)
     ;
-    k = v = NULL;
-    for (q = p, n = 0;
-         p < endptr &&
-         ((*p >= 'a' && *p <= 'z') ||
-          (*p >= 'A' && *p <= 'Z') ||
-          (*p >= '0' && *p <= '9') ||
-           *p == '-' || *p == ':'
-         ); n++, p++);
-    if (n == 0) {
-      *kp = *vp = NULL;
-      return  -1;
-    }
-    k = NEW(n + 1, char);
-    memcpy(k, q, n); k[n] = '\0';
-    if (p + 2 >= endptr || p[0] != '=' || (p[1] != '\"' && p[1] != '\'')) {
-      k = mfree(k);
-      *pp = p;
+  k = v = NULL;
+  for (q = p, n = 0;
+       p < endptr &&
+       ((*p >= 'a' && *p <= 'z') ||
+        (*p >= 'A' && *p <= 'Z') ||
+        (*p >= '0' && *p <= '9') ||
+         *p == '-' || *p == ':'
+       ); n++, p++);
+  if (n == 0) {
+    *kp = *vp = NULL;
+    return  -1;
+  }
+  k = NEW(n + 1, char);
+  memcpy(k, q, n); k[n] = '\0';
+  if (p + 2 >= endptr || p[0] != '=' || (p[1] != '\"' && p[1] != '\'')) {
+    k = mfree(k);
+    *pp = p;
+    error = -1;
+  } else {
+    char  qchr = p[1];
+    p += 2; /* skip '="' */
+    for (q = p, n = 0; p < endptr && *p != qchr; p++, n++);
+    if (p == endptr || *p != qchr)
       error = -1;
-    } else {
-      char  qchr = p[1];
-      p += 2; /* skip '="' */
-      for (q = p, n = 0; p < endptr && *p != qchr; p++, n++);
-      if (p == endptr || *p != qchr)
-        error = -1;
-      else {
-        v = NEW(n + 1, char);
-        memcpy(v, q, n); v[n] = '\0';
-        p++;
-      }
+    else {
+      v = NEW(n + 1, char);
+      memcpy(v, q, n); v[n] = '\0';
+      p++;
     }
+  }
 
   *kp = k; *vp = v; *pp = p;
   return  error;

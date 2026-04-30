@@ -1185,7 +1185,7 @@ static struct colordef_
   {"Gray",           gray(0.5)},
   {"Black",          gray(0.0)},
   {"White",          gray(1.0)},
-  {NULL}
+  {NULL, {0 , 0, 0, 0, {0}, 0}}
 };
 
 

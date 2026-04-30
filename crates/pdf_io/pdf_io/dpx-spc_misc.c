@@ -360,9 +360,9 @@ struct fontattr {
     pdf_obj *attr;
 };
 
-struct fontattr *fontattrs = NULL;
-int num_fontattrs = 0;
-int max_fontattrs = 0;
+static struct fontattr *fontattrs = NULL;
+static int num_fontattrs = 0;
+static int max_fontattrs = 0;
 
 static int
 process_fontattr (const char *ident, double size, pdf_obj *attr)

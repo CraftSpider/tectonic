@@ -733,15 +733,12 @@ static int32_t
 handle_subst_glyphs (CMap *cmap, CMap *cmap_add, char *used_chars)
 {
     int32_t count = 0;
-    int32_t cid;
 
-    for (cid = 0; cid < 65536; cid++) {
-        if (!is_used_char2(used_chars, cid))
-            continue;
-        else {
+    for (int32_t cid = 0; cid < 65536; cid++) {
+        if (!is_used_char2(used_chars, cid)){
+        } else {
             unsigned char        buf[256];
             size_t               inbytesleft = 2, outbytesleft = 254;
-            size_t               len;
             unsigned char       *outbuf = buf + 2;
             const unsigned char *inbuf  = buf;
 
@@ -749,7 +746,7 @@ handle_subst_glyphs (CMap *cmap, CMap *cmap_add, char *used_chars)
             buf[1] =  cid & 0xff;
             CMap_decode(cmap_add, &inbuf, &inbytesleft, &outbuf, &outbytesleft);
             if (inbytesleft == 0) {
-                len = 254 - outbytesleft;
+                size_t len = 254 - outbytesleft;
                 CMap_add_bfchar(cmap, buf, 2, buf + 2, len);
                 used_chars[cid / 8] &= ~(1 << (7 - (cid % 8)));
                 count++;

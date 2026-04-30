@@ -1932,7 +1932,7 @@ add_ToUnicode_ligature (CMap *cmap, char *used_chars,
                         int32_t *map_base, int32_t *map_sub, USHORT num_glyphs,
                         uint16_t *GIDToCIDMap)
 {
-  int32_t count = 0;
+  // int32_t count = 0;
   USHORT  i, idx, gid;
 
   assert(subtab);
@@ -1948,7 +1948,7 @@ add_ToUnicode_ligature (CMap *cmap, char *used_chars,
       for (idx = 0; idx < cov->count; idx++) {
         gid = cov->list[idx];
         if (gid < num_glyphs) {
-          count += add_ligature1_inverse_map(cmap, used_chars,
+          /* count += */ add_ligature1_inverse_map(cmap, used_chars,
                                              map_base, map_sub, num_glyphs,
                                              GIDToCIDMap, gid, idx, data);
         }
@@ -1960,7 +1960,7 @@ add_ToUnicode_ligature (CMap *cmap, char *used_chars,
              gid <= cov->range[i].End && gid < num_glyphs; gid++) {
           idx = cov->range[i].StartCoverageIndex + gid - cov->range[i].Start;
           if (gid < num_glyphs) {
-            count += add_ligature1_inverse_map(cmap, used_chars,
+            /* count += */ add_ligature1_inverse_map(cmap, used_chars,
                                                map_base, map_sub, num_glyphs,
                                                GIDToCIDMap, gid, idx, data);
           }
