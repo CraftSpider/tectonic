@@ -3295,8 +3295,6 @@ dependencies = [
  "tectonic_geturl",
  "tectonic_io_base",
  "tectonic_status_base",
- "tectonic_xdv",
- "tectonic_xetex_layout",
  "tempfile",
  "termcolor",
  "tokio",
@@ -3309,7 +3307,6 @@ dependencies = [
  "watchexec-signals",
  "watchexec-supervisor",
  "which",
- "zip",
 ]
 
 [[package]]
@@ -3434,7 +3431,6 @@ dependencies = [
  "tectonic_bridge_core",
  "tectonic_errors",
  "tectonic_io_base",
- "tectonic_status_base",
 ]
 
 [[package]]
@@ -3500,7 +3496,6 @@ dependencies = [
  "curl",
  "reqwest",
  "tectonic_errors",
- "tectonic_status_base",
 ]
 
 [[package]]
@@ -3564,7 +3559,6 @@ dependencies = [
 name = "tectonic_xetex_layout"
 version = "0.0.0-dev.0"
 dependencies = [
- "cc",
  "enrede",
  "libc",
  "tectonic_bridge_core",
@@ -3573,8 +3567,6 @@ dependencies = [
  "tectonic_bridge_graphite2",
  "tectonic_bridge_harfbuzz",
  "tectonic_bridge_icu",
- "tectonic_cfg_support",
- "tectonic_io_base",
  "tectonic_mac_core",
 ]
 
