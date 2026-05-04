@@ -324,6 +324,32 @@ impl<'a> CoreBridgeLauncher<'a> {
 
         result
     }
+
+    /// Invoke a function to launch a Rust-native engine without needing to
+    /// hold a global mutex.
+    ///
+    /// This is the less-strict variant of [`Self::with_global_lock`] that doesn't
+    /// have the complicated preconditions.
+    pub fn with_state<F, T>(&mut self, callback: F) -> Result<T>
+    where
+        F: FnOnce(&mut CoreBridgeState<'_>) -> Result<T>,
+    {
+        let mut state = CoreBridgeState::new(
+            self.security.clone(),
+            self.hooks,
+            self.status,
+            self.filesystem_emulation_settings.clone(),
+        );
+        let result = callback(&mut state);
+
+        if let Err(ref e) = result {
+            if e.downcast_ref::<EngineAbortedError>().is_some() {
+                return Err(EngineAbortedError::new_with_details().into());
+            }
+        }
+
+        result
+    }
 }
 
 /// The CoreBridgeState structure is a handle to Rust state that can be used by

@@ -141,7 +141,7 @@ impl BibtexEngine {
     ) -> Result<BibtexOutcome> {
         let caux = CString::new(aux)?;
 
-        launcher.with_global_lock(|state| {
+        launcher.with_state(|state| {
             let mut ctx = Bibtex::new(state, self.config.clone());
             let hist = bibtex_main(&mut ctx, &caux);
 
