@@ -4,7 +4,7 @@ use crate::{
     cite::CiteInfo,
     exec::print_bst_name,
     hash,
-    hash::{HashData, HashPointer},
+    hash::HashPointer,
     log::{
         aux_end1_err_print, aux_end2_err_print, aux_err_illegal_another_print,
         aux_err_no_right_brace_print, aux_err_print, aux_err_stuff_after_right_brace_print,
@@ -14,10 +14,9 @@ use crate::{
     },
     peekable::PeekableInput,
     pool::{StrNumber, StringPool},
-    scan::Scan,
     Bibtex, BibtexError, File, GlobalItems,
 };
-use chumsky::Parser;
+use chumsky::{input, Parser};
 use std::ffi::CString;
 use tectonic_bridge_core::FileFormat;
 
@@ -45,39 +44,47 @@ struct AuxCmd {
     kind: AuxKind,
 }
 
-type Error = chumsky::error::Cheap<u8>;
+type Error = chumsky::error::Cheap;
 
-fn aux_parser() -> impl Parser<u8, Option<AuxCmd>, Error = Error> {
+fn aux_parser<'a>() -> impl Parser<'a, &'a [u8], Option<AuxCmd>, chumsky::extra::Err<Error>> {
     use chumsky::prelude::*;
 
-    fn sarb<T>((cur, end): (CmdArgs<T>, Option<()>), span: core::ops::Range<usize>) -> CmdArgs<T> {
+    fn sarb<'a, 'b, T>(
+        (cur, end): (CmdArgs<T>, Option<()>),
+        extra: &mut input::MapExtra<'a, 'b, &'a [u8], extra::Err<Error>>,
+    ) -> CmdArgs<T> {
         if let Some(_) = end {
             cur
         } else {
-            CmdArgs::StuffAfterRightBrace(span.end)
+            CmdArgs::StuffAfterRightBrace(extra.span().end)
         }
     }
 
-    fn nrb<T>(_: Vec<u8>, span: core::ops::Range<usize>) -> CmdArgs<T> {
-        CmdArgs::NoRightBrace(span.end)
+    fn nrb<'a, 'b, T>(
+        _: Vec<u8>,
+        extra: &mut input::MapExtra<'a, 'b, &'a [u8], extra::Err<Error>>,
+    ) -> CmdArgs<T> {
+        CmdArgs::NoRightBrace(extra.span().end)
     }
 
-    let arg = none_of::<_, _, Error>([b'}'])
+    let arg = none_of::<_, &'a [u8], extra::Err<Error>>([b'}'])
         .repeated()
-        .map_with_span(move |str, span| {
+        .collect::<Vec<_>>()
+        .map_with(move |str, extra| {
             if str.iter().copied().any(|c: u8| c.is_ascii_whitespace()) {
-                CmdArgs::WhitespaceInArg(span.start)
+                CmdArgs::WhitespaceInArg(extra.span().start)
             } else {
                 CmdArgs::Args(str)
             }
         })
         .then_ignore(just(b'}'))
         .then(end().or_not())
-        .map_with_span(sarb)
-        .or(any().repeated().map_with_span(nrb));
+        .map_with(sarb)
+        .or(any().repeated().collect::<Vec<u8>>().map_with(nrb));
 
-    let args = none_of::<_, _, Error>([b'}', b','])
+    let args = none_of::<_, &'a [u8], extra::Err<Error>>([b'}', b','])
         .repeated()
+        .collect::<Vec<_>>()
         .map(move |str| {
             if str.iter().copied().any(|c: u8| c.is_ascii_whitespace()) {
                 None
@@ -86,7 +93,8 @@ fn aux_parser() -> impl Parser<u8, Option<AuxCmd>, Error = Error> {
             }
         })
         .separated_by(just(b','))
-        .map_with_span(move |strs, span| {
+        .collect::<Vec<_>>()
+        .map_with(move |strs, extra| {
             let (ws, strs) =
                 strs.into_iter()
                     .fold((false, Vec::new()), |(is_ws, mut strs), str| match str {
@@ -97,19 +105,19 @@ fn aux_parser() -> impl Parser<u8, Option<AuxCmd>, Error = Error> {
                         None => (true, strs),
                     });
             if ws {
-                CmdArgs::WhitespaceInArg(span.start)
+                CmdArgs::WhitespaceInArg(extra.span().start)
             } else {
                 CmdArgs::Args(strs)
             }
         })
         .then_ignore(just(b'}'))
         .then(end().or_not())
-        .map_with_span(sarb)
-        .or(any().repeated().map_with_span(nrb));
+        .map_with(sarb)
+        .or(any().repeated().collect::<Vec<u8>>().map_with(nrb));
 
     let cmd = |cmd: &'static [u8]| {
-        just::<_, _, Error>(cmd)
-            .map_with_span(|_, span| span.end)
+        just::<_, &'a [u8], extra::Err<Error>>(cmd)
+            .map_with(|_, extra| extra.span().end)
             .then_ignore(just(b'{'))
     };
 
@@ -121,6 +129,7 @@ fn aux_parser() -> impl Parser<u8, Option<AuxCmd>, Error = Error> {
     choice((bibdata, bibstyle, citation, input))
         .map(|(offset, kind)| AuxCmd { offset, kind })
         .or_not()
+        .lazy()
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -244,11 +253,10 @@ pub(crate) fn get_aux_command_and_process(
                         return Ok(());
                     }
                 } else {
-                    let uc_res = globals.pool.lookup_str_insert::<hash::Cite>(
-                        globals.pool,
-                        &cite,
-                        0,
-                    );
+                    let uc_res =
+                        globals
+                            .hash
+                            .lookup_str_insert::<hash::Cite>(globals.pool, &cite, 0);
                     if uc_res.exists {
                         hash_cite_confusion(ctx);
                         return Err(BibtexError::Fatal);
@@ -260,7 +268,7 @@ pub(crate) fn get_aux_command_and_process(
 
                     globals
                         .cites
-                        .set_cite(globals.cites.ptr(), globals.hash.text(uc_res.loc));
+                        .set_cite(globals.cites.ptr(), globals.hash.get(uc_res.loc).text());
                     globals.hash.set_extra(uc_res.loc, globals.cites.ptr());
                     globals.hash.set_extra(lc_res.loc, uc_res.loc);
                     globals.cites.set_ptr(globals.cites.ptr() + 1);
@@ -280,30 +288,29 @@ pub(crate) fn get_aux_command_and_process(
             globals.buffers.set_offset(BufTy::Base, 2, line.len());
 
             for file in files {
-                let res =
-                    globals
-                        .hash
-                        .lookup_str_insert::<hash::BibFile>(globals.hash, &file, ());
+                let res = globals
+                    .hash
+                    .lookup_str_insert::<hash::BibFile>(globals.pool, &file, ());
                 if res.exists {
                     ctx.write_logs("This database file appears more than once: ");
-                    print_bib_name(ctx, globals.pool, globals.hash.text(res.loc))?;
+                    print_bib_name(ctx, globals.pool, globals.hash.get(res.loc).text())?;
                     aux_err_print(ctx, globals.buffers, globals.aux, globals.pool)?;
                     return Ok(());
                 }
 
-                let name = globals.pool.get_str(globals.hash.text(res.loc));
+                let name = globals.pool.get_str(globals.hash.get(res.loc).text());
                 let fname = CString::new(name).unwrap();
                 let bib_in = PeekableInput::open(ctx, &fname, FileFormat::Bib);
                 match bib_in {
                     Err(_) => {
                         ctx.write_logs("I couldn't open database file ");
-                        print_bib_name(ctx, globals.pool, globals.hash.text(res.loc))?;
+                        print_bib_name(ctx, globals.pool, globals.hash.get(res.loc).text())?;
                         aux_err_print(ctx, globals.buffers, globals.aux, globals.pool)?;
                         return Ok(());
                     }
                     Ok(file) => {
                         globals.bibs.push_file(File {
-                            name: globals.hash.text(res.loc),
+                            name: globals.hash.get(res.loc).text(),
                             file,
                             line: 0,
                         });
@@ -334,30 +341,29 @@ pub(crate) fn get_aux_command_and_process(
                 return Ok(());
             }
 
-            let res =
-                globals
-                    .hash
-                    .lookup_str_insert::<hash::AuxFile>(globals.hash, &file, ());
+            let res = globals
+                .hash
+                .lookup_str_insert::<hash::AuxFile>(globals.pool, &file, ());
             if res.exists {
                 ctx.write_logs("Already encountered file ");
-                print_aux_name(ctx, globals.pool, globals.hash.text(res.loc))?;
+                print_aux_name(ctx, globals.pool, globals.hash.get(res.loc).text())?;
                 aux_err_print(ctx, globals.buffers, globals.aux, globals.pool)?;
                 return Ok(());
             }
 
-            let name = globals.pool.get_str(globals.hash.text(res.loc));
+            let name = globals.pool.get_str(globals.hash.get(res.loc).text());
             let fname = CString::new(name).unwrap();
             let file = PeekableInput::open(ctx, &fname, FileFormat::Tex);
             match file {
                 Err(_) => {
                     ctx.write_logs("I couldn't open auxiliary file ");
-                    print_aux_name(ctx, globals.pool, globals.hash.text(res.loc))?;
+                    print_aux_name(ctx, globals.pool, globals.hash.get(res.loc).text())?;
                     aux_err_print(ctx, globals.buffers, globals.aux, globals.pool)?;
                     return Ok(());
                 }
                 Ok(file) => {
                     globals.aux.push_file(File {
-                        name: globals.hash.text(res.loc),
+                        name: globals.hash.get(res.loc).text(),
                         file,
                         line: 0,
                     });
@@ -382,30 +388,29 @@ pub(crate) fn get_aux_command_and_process(
             let file = unwrap_args!(ctx, globals, file);
             globals.buffers.set_offset(BufTy::Base, 2, line.len());
 
-            let res =
-                globals
-                    .hash
-                    .lookup_str_insert::<hash::BstFile>(globals.hash, &file, ());
+            let res = globals
+                .hash
+                .lookup_str_insert::<hash::BstFile>(globals.pool, &file, ());
             if res.exists {
                 ctx.write_logs("Already encountered style file");
                 print_confusion(ctx);
                 return Err(BibtexError::Fatal);
             }
 
-            let name = globals.pool.get_str(globals.hash.text(res.loc));
+            let name = globals.pool.get_str(globals.hash.get(res.loc).text());
             let fname = CString::new(name).unwrap();
             let bst_file = PeekableInput::open(ctx, &fname, FileFormat::Bst);
             match bst_file {
                 Err(_) => {
                     ctx.write_logs("I couldn't open style file ");
-                    print_bst_name(ctx, globals.pool, globals.hash.text(res.loc))?;
+                    print_bst_name(ctx, globals.pool, globals.hash.get(res.loc).text())?;
                     ctx.bst = None;
                     aux_err_print(ctx, globals.buffers, globals.aux, globals.pool)?;
                     return Ok(());
                 }
                 Ok(file) => {
                     ctx.bst = Some(File {
-                        name: globals.hash.text(res.loc),
+                        name: globals.hash.get(res.loc).text(),
                         file,
                         line: 0,
                     });
