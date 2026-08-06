@@ -699,9 +699,15 @@ void delete_glue_ref(int32_t p);
 
 void end_token_list(void);
 
+void get_next(void);
+
 uint32_t selector(void);
 
 void set_selector(uint32_t val);
+
+uint32_t old_setting(void);
+
+void set_old_setting(uint32_t val);
 
 int32_t tally(void);
 
@@ -926,6 +932,14 @@ void set_avail(int32_t val);
 int32_t rover(void);
 
 void set_rover(int32_t val);
+
+uintptr_t stack_size(void);
+
+void set_stack_size(uintptr_t val);
+
+uintptr_t max_in_stack(void);
+
+void set_max_in_stack(uintptr_t val);
 
 MemoryWord eqtb(uintptr_t idx);
 

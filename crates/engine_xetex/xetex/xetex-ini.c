@@ -31,7 +31,6 @@ int32_t font_mem_size;
 int32_t hyph_size;
 int32_t trie_size;
 int32_t buf_size;
-int32_t stack_size;
 int32_t max_in_open;
 int32_t param_size;
 int32_t nest_size;
@@ -72,7 +71,6 @@ int32_t max_save_stack;
 uint16_t cur_level;
 group_code cur_group;
 int32_t cur_boundary;
-int32_t max_in_stack;
 int32_t open_parens;
 int32_t warning_index;
 int32_t def_ref;
@@ -3363,7 +3361,7 @@ tt_run_engine(const char *dump_name, const char *input_file_name, time_t build_d
     max_in_open = 15;
     param_size = 10000;
     save_size = 80000L;
-    stack_size = 5000;
+    set_stack_size(5000);
     set_error_line(79);
     set_half_error_line(50);
     max_print_line = 79;
@@ -3375,7 +3373,7 @@ tt_run_engine(const char *dump_name, const char *input_file_name, time_t build_d
     resize_buffer(buf_size+1);
     resize_nest(nest_size+1);
     resize_save_stack(save_size+1);
-    resize_input_stack(stack_size+1);
+    resize_input_stack(stack_size()+1);
     resize_input_file(max_in_open+1);
     resize_eof_seen(max_in_open+1);
     resize_grp_stack(max_in_open+1);
@@ -3483,7 +3481,7 @@ tt_run_engine(const char *dump_name, const char *input_file_name, time_t build_d
         output_file_extension = ".xdv";
 
     set_input_ptr(0);
-    max_in_stack = 0;
+    set_max_in_stack(0);
     set_source_filename_stack(0, 0);
     set_full_source_filename_stack(0, 0);
     set_in_open(0);

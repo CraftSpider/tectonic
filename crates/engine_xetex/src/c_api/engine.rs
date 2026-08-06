@@ -1,12 +1,8 @@
 use crate::c_api::dvi::{rs_deinitialize_shipout_variables, rs_finalize_dvi_file};
-use crate::c_api::errors::{ffi_abort, rs_fatal_error, rs_int_error, EngineError};
+use crate::c_api::errors::{ffi_abort, rs_begin_diagnostic, rs_end_diagnostic, rs_fatal_error, rs_int_error, rs_overflow, EngineError};
 use crate::c_api::globals::Globals;
 use crate::c_api::is_dir_sep;
-use crate::c_api::output::{
-    rs_capture_to_diagnostic, rs_error_here_with_diagnostic, rs_print, rs_print_bytes,
-    rs_print_char, rs_print_cs, rs_print_esc_bytes, rs_print_int, rs_print_ln, rs_print_nl,
-    rs_print_nl_bytes, rs_print_raw_char,
-};
+use crate::c_api::output::{diagnostic_begin_capture_warning_here, rs_capture_to_diagnostic, rs_error_here_with_diagnostic, rs_print, rs_print_bytes, rs_print_char, rs_print_cs, rs_print_esc_bytes, rs_print_int, rs_print_ln, rs_print_nl, rs_print_nl_bytes, rs_print_raw_char};
 use crate::c_api::pool::{
     rs_make_string, rs_search_string, rs_slow_make_string, StringPool, EMPTY_STRING, TOO_BIG_CHAR,
 };
@@ -1378,5 +1374,643 @@ pub fn rs_end_token_list(globals: &mut Globals<'_, '_>) -> Result<(), EngineErro
 #[no_mangle]
 pub extern "C-unwind" fn end_token_list() {
     let res = Globals::with(|globals| rs_end_token_list(globals));
+    ffi_abort(res)
+}
+
+pub fn rs_begin_token_list(globals: &mut Globals<'_, '_>, p: usize, t: u16) -> Result<(), EngineError> {
+    if globals.engine.input_ptr > globals.engine.max_in_stack {
+        globals.engine.max_in_stack = globals.engine.input_ptr;
+        if globals.engine.input_ptr == globals.engine.stack_size {
+            rs_overflow(globals, b"input stack size", globals.engine.stack_size as i32)?;
+        }
+    }
+    
+    globals.engine.input_stack[globals.engine.input_ptr] = globals.engine.cur_input.clone();
+    globals.engine.input_ptr += 1;
+    
+    globals.engine.cur_input.state = TOKEN_LIST;
+    globals.engine.cur_input.start = p as i32;
+    globals.engine.cur_input.index = t;
+    
+    if t >= MACRO {
+        globals.engine.mem[p].b32.s0 += 1;
+        if t == MACRO {
+            globals.engine.cur_input.limit = globals.engine.param_ptr;
+        } else {
+            globals.engine.cur_input.loc = unsafe { globals.engine.mem[p].b32.s1 };
+            
+            if globals.engine.int_par(IntPar::TracingMacros) > 1 {
+                rs_begin_diagnostic(globals);
+                diagnostic_begin_capture_warning_here();
+                rs_print_nl_bytes(globals, b"");
+                match t {
+                    MARK_TEXT => rs_print_esc_bytes(globals, b"mark"),
+                    WRITE_TEXT => rs_print_esc_bytes(globals, b"write"),
+                    _ => {
+                        rs_print_cmd_chr(globals, ASSIGN_TOKS, t as usize + LOCAL_BASE + LOCAL__output_routine - OUTPUT_TEXT as usize);
+                    }
+                }
+                rs_print_bytes(globals, b"->");
+                rs_token_show(globals, p);
+                rs_capture_to_diagnostic(globals, None);
+                rs_end_diagnostic(globals, false);
+            }
+        }
+    } else {
+        globals.engine.cur_input.loc = p as i32;
+    }
+    Ok(())
+}
+
+
+pub fn rs_get_next(globals: &mut Globals<'_, '_>) -> Result<(), EngineError> {
+    /*
+    int32_t k;
+    int32_t t;
+    unsigned char /*max_char_code */ cat;
+    UnicodeScalar c;
+    UTF16_code lower;
+    small_number d;
+    small_number sup_count;
+    */
+
+    'restart: loop {
+        globals.engine.cur_cs = 0;
+
+        if globals.engine.cur_input.state != TOKEN_LIST {
+            /*
+                  texswitch:
+            if (cur_input().loc <= cur_input().limit)
+            {
+                set_cur_chr(buffer(cur_input().loc));
+                cur_input_ptr()->loc++;
+
+                if (cur_chr() >= 0xD800 && cur_chr() < 0xDC00 && cur_input().loc <= cur_input().limit &&
+                    buffer(cur_input().loc) >= 0xDC00 && buffer(cur_input().loc) < 0xE000)
+                {
+                    lower = buffer(cur_input().loc) - 0xDC00;
+                    cur_input_ptr()->loc++;
+                    set_cur_chr(65536L + (cur_chr() - 0xD800) * 1024 + lower);
+                }
+
+            reswitch:
+                set_cur_cmd(CAT_CODE(cur_chr()));
+
+                switch (cur_input().state + cur_cmd())
+                {
+                    /*357:*/
+                ANY_STATE_PLUS(IGNORE):
+                case SKIP_BLANKS + SPACER:
+                case NEW_LINE + SPACER:
+                    goto texswitch;
+                    break;
+
+                ANY_STATE_PLUS(ESCAPE):
+                    if (cur_input().loc > cur_input().limit)
+                    {
+                        set_cur_cs(NULL_CS);
+                    }
+                    else
+                    {
+                    start_cs:
+                        k = cur_input().loc;
+                        set_cur_chr(buffer(k));
+                        cat = CAT_CODE(cur_chr());
+                        k++;
+
+                        if (cat == LETTER)
+                            cur_input_ptr()->state = SKIP_BLANKS;
+                        else if (cat == SPACER)
+                            cur_input_ptr()->state = SKIP_BLANKS;
+                        else
+                            cur_input_ptr()->state = MID_LINE;
+
+                        if (cat == LETTER && k <= cur_input().limit)
+                        {
+                            /*368:*/
+                            do
+                            {
+                                set_cur_chr(buffer(k));
+                                cat = CAT_CODE(cur_chr());
+                                k++;
+                            }
+                            while (cat == LETTER && k <= cur_input().limit);
+
+                            if (cat == SUP_MARK && buffer(k) == cur_chr() && k < cur_input().limit)
+                            {
+                                /* Special characters: either ^^X, or up to six
+                                 * ^'s followed by one hex character for each
+                                 * ^. */
+
+                                int32_t sup_count_save;
+
+                                /* How many ^'s are there? */
+
+                                sup_count = 2;
+
+                                while (sup_count < 6 && k + 2 * sup_count - 2 <= cur_input().limit &&
+                                    buffer(k + sup_count - 1) == cur_chr())
+                                    sup_count++;
+
+                                /* If they are followed by a sufficient number of
+                                 * hex characters, treat it as an extended ^^^
+                                 * sequence. If not, treat it as original-style
+                                 * ^^X. */
+
+                                sup_count_save = sup_count;
+
+                                for (d = 1; d <= sup_count_save; d++)
+                                {
+                                    if (!IS_LC_HEX(buffer(k + sup_count - 2 + d)))
+                                    {
+                                        /* Non-hex: do it old style */
+                                        c = buffer(k + 1);
+
+                                        if (c < 128)
+                                        {
+                                            if (c < 64)
+                                                set_buffer(k - 1, c + 64);
+                                            else
+                                                set_buffer(k - 1, c - 64);
+                                            d = 2;
+                                            cur_input_ptr()->limit = cur_input().limit - d;
+                                            while (k <= cur_input().limit)
+                                            {
+                                                set_buffer(k, buffer(k + d));
+                                                k++;
+                                            }
+                                            goto start_cs;
+                                        }
+                                        else
+                                        {
+                                            sup_count = 0;
+                                        }
+                                    }
+                                }
+
+                                if (sup_count > 0)
+                                {
+                                    set_cur_chr(0);
+
+                                    for (d = 1; d <= sup_count; d++)
+                                    {
+                                        c = buffer(k + sup_count - 2 + d);
+                                        if (c <= '9')
+                                            set_cur_chr(16 * cur_chr() + c - '0');
+                                        else
+                                            set_cur_chr(16 * cur_chr() + c - 'a' + 10);
+                                    }
+
+                                    if (cur_chr() > BIGGEST_USV)
+                                    {
+                                        set_cur_chr(buffer(k));
+                                    }
+                                    else
+                                    {
+                                        set_buffer(k - 1, cur_chr());
+                                        d = 2 * sup_count - 1;
+                                        cur_input_ptr()->limit = cur_input().limit - d;
+
+                                        while (k <= cur_input().limit)
+                                        {
+                                            set_buffer(k, buffer(k + d));
+                                            k++;
+                                        }
+                                        goto start_cs;
+                                    }
+                                }
+                            }
+
+                            if (cat != LETTER)
+                                k--;
+
+                            if (k > cur_input().loc + 1)
+                            {
+                                set_cur_cs(id_lookup(cur_input().loc, k - cur_input().loc));
+                                cur_input_ptr()->loc = k;
+                                goto found;
+                            }
+                        }
+                        else
+                        {
+                            /*367:*/
+                            if (cat == SUP_MARK && buffer(k) == cur_chr() && k < cur_input().limit)
+                            {
+                                int32_t sup_count_save;
+
+                                sup_count = 2;
+
+                                while (sup_count < 6 && k + 2 * sup_count - 2 <= cur_input().limit &&
+                                    buffer(k + sup_count - 1) == cur_chr())
+                                    sup_count++;
+
+                                sup_count_save = sup_count;
+
+                                for (d = 1; d <= sup_count_save; d++)
+                                {
+                                    if (!IS_LC_HEX(buffer(k + sup_count - 2 + d)))
+                                    {
+                                        c = buffer(k + 1);
+                                        if (c < 128)
+                                        {
+                                            if (c < 64)
+                                                set_buffer(k - 1, c + 64);
+                                            else
+                                                set_buffer(k - 1, c - 64);
+                                            d = 2;
+                                            cur_input_ptr()->limit = cur_input().limit - d;
+                                            while (k <= cur_input().limit)
+                                            {
+                                                set_buffer(k, buffer(k + d));
+                                                k++;
+                                            }
+                                            goto start_cs;
+                                        }
+                                        else
+                                        {
+                                            sup_count = 0;
+                                        }
+                                    }
+                                }
+
+                                if (sup_count > 0)
+                                {
+                                    set_cur_chr(0);
+
+                                    for (d = 1; d <= sup_count; d++)
+                                    {
+                                        c = buffer(k + sup_count - 2 + d);
+                                        if (c <= '9')
+                                            set_cur_chr(16 * cur_chr() + c - '0');
+                                        else
+                                            set_cur_chr(16 * cur_chr() + c - 'a' + 10);
+                                    }
+
+                                    if (cur_chr() > BIGGEST_USV)
+                                    {
+                                        set_cur_chr(buffer(k));
+                                    }
+                                    else
+                                    {
+                                        set_buffer(k - 1, cur_chr());
+                                        d = 2 * sup_count - 1;
+                                        cur_input_ptr()->limit = cur_input().limit - d;
+                                        while (k <= cur_input().limit)
+                                        {
+                                            set_buffer(k, buffer(k + d));
+                                            k++;
+                                        }
+                                        goto start_cs;
+                                    }
+                                }
+                            }
+                        }
+
+                        if (buffer(cur_input().loc) > 65535L)
+                        {
+                            set_cur_cs(id_lookup(cur_input().loc, 1));
+                            cur_input_ptr()->loc++;
+                            goto found;
+                        }
+
+                        set_cur_cs(SINGLE_BASE + buffer(cur_input().loc));
+                        cur_input_ptr()->loc++;
+                    }
+
+                found:
+                    set_cur_cmd(eqtb_ptr(cur_cs())->b16.s1);
+                    set_cur_chr(eqtb_ptr(cur_cs())->b32.s1);
+                    if (cur_cmd() >= OUTER_CALL)
+                        check_outer_validity();
+                    break;
+
+                ANY_STATE_PLUS(ACTIVE_CHAR):
+                    set_cur_cs(cur_chr() + 1);
+                    set_cur_cmd(eqtb_ptr(cur_cs())->b16.s1);
+                    set_cur_chr(eqtb_ptr(cur_cs())->b32.s1);
+                    cur_input_ptr()->state = MID_LINE;
+                    if (cur_cmd() >= OUTER_CALL)
+                        check_outer_validity();
+                    break;
+
+                ANY_STATE_PLUS(SUP_MARK):
+                    if (cur_chr() == buffer(cur_input().loc))
+                    {
+                        if (cur_input().loc < cur_input().limit)
+                        {
+                            sup_count = 2;
+
+                            while (sup_count < 6 && cur_input().loc + 2 * sup_count - 2 <= cur_input().limit &&
+                                cur_chr() == buffer(cur_input().loc + sup_count - 1))
+                                sup_count++;
+
+                            for (d = 1; d <= sup_count; d++)
+                            {
+                                if (!IS_LC_HEX(buffer(cur_input().loc + sup_count - 2 + d)))
+                                {
+                                    c = buffer(cur_input().loc + 1);
+                                    if (c < 128)
+                                    {
+                                        cur_input_ptr()->loc = cur_input().loc + 2;
+                                        if (c < 64)
+                                            set_cur_chr(c + 64);
+                                        else
+                                            set_cur_chr(c - 64);
+                                        goto reswitch;
+                                    }
+                                    goto not_exp;
+                                }
+                            }
+
+                            set_cur_chr(0);
+
+                            for (d = 1; d <= sup_count; d++)
+                            {
+                                c = buffer(cur_input().loc + sup_count - 2 + d);
+                                if (c <= '9')
+                                    set_cur_chr(16 * cur_chr() + c - '0');
+                                else
+                                    set_cur_chr(16 * cur_chr() + c - 'a' + 10);
+                            }
+
+                            if (cur_chr() > BIGGEST_USV)
+                            {
+                                set_cur_chr(buffer(cur_input().loc));
+                                goto not_exp;
+                            }
+
+                            cur_input_ptr()->loc = cur_input().loc + 2 * sup_count - 1;
+                            goto reswitch;
+                        }
+                    }
+
+                not_exp:
+                    cur_input_ptr()->state = MID_LINE;
+                    break;
+
+                ANY_STATE_PLUS(INVALID_CHAR):
+                    error_here_with_diagnostic("Text line contains an invalid character");
+                    capture_to_diagnostic(NULL);
+
+                    set_help_ptr(2);
+                    set_help_line(1, "A funny symbol that I can't read has just been input.");
+                    set_help_line(0, "Continue, and I'll forget that it ever happened.");
+                    error();
+                    goto restart;
+                    break;
+
+                case MID_LINE + SPACER:
+                    cur_input_ptr()->state = SKIP_BLANKS;
+                    set_cur_chr(' ');
+                    break;
+
+                case MID_LINE + CAR_RET:
+                    cur_input_ptr()->loc = cur_input().limit + 1;
+                    set_cur_cmd(SPACER);
+                    set_cur_chr(' ');
+                    break;
+
+                ANY_STATE_PLUS(COMMENT):
+                case SKIP_BLANKS + CAR_RET:
+                    cur_input_ptr()->loc = cur_input().limit + 1;
+                    goto texswitch;
+                    break;
+
+                case NEW_LINE + CAR_RET:
+                    cur_input_ptr()->loc = cur_input().limit + 1;
+                    set_cur_cs(par_loc);
+                    set_cur_cmd(eqtb_ptr(cur_cs())->b16.s1);
+                    set_cur_chr(eqtb_ptr(cur_cs())->b32.s1);
+                    if (cur_cmd() >= OUTER_CALL)
+                        check_outer_validity();
+                    break;
+
+                case MID_LINE + LEFT_BRACE:
+                    set_align_state(align_state() + 1);
+                    break;
+
+                case SKIP_BLANKS + LEFT_BRACE:
+                case NEW_LINE + LEFT_BRACE:
+                    cur_input_ptr()->state = MID_LINE;
+                    set_align_state(align_state() + 1);
+                    break;
+
+                case MID_LINE + RIGHT_BRACE:
+                    set_align_state(align_state() - 1);
+                    break;
+
+                case SKIP_BLANKS + RIGHT_BRACE:
+                case NEW_LINE + RIGHT_BRACE:
+                    cur_input_ptr()->state = MID_LINE;
+                    set_align_state(align_state() - 1);
+                    break;
+
+                ADD_DELIMS_TO(SKIP_BLANKS):
+                ADD_DELIMS_TO(NEW_LINE):
+                    cur_input_ptr()->state = MID_LINE;
+                    break;
+
+                default:
+                    break;
+                }
+            }
+            else
+            {
+                cur_input_ptr()->state = NEW_LINE;
+
+                if (cur_input().name > 17)
+                {
+                    /*374:*/
+                    set_line(line() + 1);
+                    first = cur_input().start;
+
+                    if (!force_eof)
+                    {
+                        if (cur_input().name <= 19)
+                        {
+                            if (pseudo_input())
+                            {
+                                cur_input_ptr()->limit = last;
+                            }
+                            else if (LOCAL(every_eof) != TEX_NULL && !eof_seen(cur_input().index))
+                            {
+                                cur_input_ptr()->limit = first - 1;
+                                set_eof_seen(cur_input().index, true);
+                                begin_token_list(LOCAL(every_eof), EVERY_EOF_TEXT);
+                                goto restart;
+                            }
+                            else
+                            {
+                                force_eof = true;
+                            }
+                        }
+                        else
+                        {
+                            if (input_line(input_file(cur_input().index)))
+                            {
+                                cur_input_ptr()->limit = last;
+                            }
+                            else if (LOCAL(every_eof) != TEX_NULL && !eof_seen(cur_input().index))
+                            {
+                                cur_input_ptr()->limit = first - 1;
+                                set_eof_seen(cur_input().index, true);
+                                begin_token_list(LOCAL(every_eof), EVERY_EOF_TEXT);
+                                goto restart;
+                            }
+                            else
+                            {
+                                force_eof = true;
+                            }
+                        }
+                    }
+
+                    if (force_eof)
+                    {
+                        if (INTPAR(tracing_nesting) > 0)
+                        {
+                            if (grp_stack(in_open()) != cur_boundary || if_stack(in_open()) != cond_ptr)
+                                file_warning();
+                        }
+
+                        if (cur_input().name >= 19)
+                        {
+                            print_char(')');
+                            open_parens--;
+                            ttstub_output_flush(rust_stdout());
+                        }
+
+                        force_eof = false;
+                        end_file_reading();
+                        check_outer_validity();
+                        goto restart;
+                    }
+
+                    if (INTPAR(end_line_char) < 0 || INTPAR(end_line_char) > 255)
+                        cur_input_ptr()->limit--;
+                    else
+                        set_buffer(cur_input().limit, INTPAR(end_line_char));
+
+                    first = cur_input().limit + 1;
+                    cur_input_ptr()->loc = cur_input().start;
+                }
+                else
+                {
+                    if (cur_input().name != 0)
+                    {
+                        set_cur_cmd(0);
+                        set_cur_chr(0);
+                        return;
+                    }
+
+                    if (input_ptr() > 0)
+                    {
+                        end_file_reading();
+                        goto restart;
+                    }
+
+                    /* Tectonic extension: we add a \TectonicCodaTokens toklist
+                     * that gets inserted at the very very end of processing if no
+                     * \end or \dump has been seen. We just use a global state
+                     * variable to make sure it only gets inserted once. */
+
+                    if (!used_tectonic_coda_tokens && LOCAL(tectonic_coda_tokens) != TEX_NULL)
+                    {
+                        used_tectonic_coda_tokens = true;
+                        begin_token_list(LOCAL(tectonic_coda_tokens), TECTONIC_CODA_TEXT);
+                        goto restart;
+                    }
+
+                    if (selector() < SELECTOR_LOG_ONLY)
+                        open_log_file();
+
+                    fatal_error("*** (job aborted, no legal \\end found)");
+                }
+                goto texswitch;
+            }
+                 */
+        } else if globals.engine.cur_input.loc != TEX_NULL {
+            /* if we're inputting from a non-null token list: */
+            let t = unsafe {
+                globals.engine.mem[globals.engine.cur_input.loc as usize]
+                    .b32
+                    .s0
+            };
+            globals.engine.cur_input.loc = globals.engine.base_node(globals.engine.cur_input.loc as usize)
+                .next() as i32;
+
+            if t >= CS_TOKEN_FLAG {
+                /*
+                set_cur_cs(t - CS_TOKEN_FLAG);
+                set_cur_cmd(eqtb_ptr(cur_cs())->b16.s1);
+                set_cur_chr(eqtb_ptr(cur_cs())->b32.s1);
+
+                if (cur_cmd() >= OUTER_CALL)
+                {
+                    if (cur_cmd() == DONT_EXPAND)
+                    {
+                        /*370:*/
+                        set_cur_cs(mem(cur_input().loc).b32.s0 - CS_TOKEN_FLAG);
+                        cur_input_ptr()->loc = TEX_NULL;
+                        set_cur_cmd(eqtb_ptr(cur_cs())->b16.s1);
+                        set_cur_chr(eqtb_ptr(cur_cs())->b32.s1);
+                        if (cur_cmd() > MAX_COMMAND)
+                        {
+                            set_cur_cmd(RELAX);
+                            set_cur_chr(NO_EXPAND_FLAG);
+                        }
+                    }
+                    else
+                    {
+                        check_outer_validity();
+                    }
+                }
+                 */
+            } else {
+                globals.engine.cur_cmd = (t / MAX_CHAR_VAL) as u8;
+                globals.engine.cur_chr = t % MAX_CHAR_VAL;
+
+                match globals.engine.cur_cmd as i32 {
+                    LEFT_BRACE => globals.engine.align_state += 1;
+                    RIGHT_BRACE => globals.engine.align_state -= 1;
+                    OUT_PARAM => {
+                        rs_begin_token_list(globals, globals.engine.param_stack[globals.engine.cur_input.limit + globals.engine.cur_chr - 1], PARAMETER)
+                        continue 'restart;
+                    }
+                    _ => (),
+                }
+            }
+        } else {
+            rs_end_token_list(globals)?;
+            continue 'restart;
+        }
+
+        if globals.engine.cur_cmd <= CAR_RET as u8
+            && globals.engine.cur_cmd >= TAB_MARK as u8
+            && globals.engine.align_state == 0
+        {
+            /*
+                /*818:*/
+            if (scanner_status() == ALIGNING || cur_align == TEX_NULL)
+                fatal_error("(interwoven alignment preambles are not allowed)");
+
+            set_cur_cmd(mem(cur_align + 5).b32.s0);
+            mem_ptr(cur_align + 5)->b32.s0 = cur_chr();
+            if (cur_cmd() == OMIT)
+                begin_token_list(OMIT_TEMPLATE, V_TEMPLATE);
+            else
+                begin_token_list(mem(cur_align + 2).b32.s1, V_TEMPLATE);
+            set_align_state(1000000L);
+            goto restart;
+                 */
+            continue 'restart;
+        }
+        break;
+    }
+    Ok(())
+}
+
+#[no_mangle]
+pub extern "C-unwind" fn get_next() {
+    let res = Globals::with(rs_get_next);
     ffi_abort(res)
 }
