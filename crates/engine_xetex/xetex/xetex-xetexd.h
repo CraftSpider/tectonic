@@ -625,8 +625,6 @@ void print_in_mode(int32_t m);
 void push_nest(void);
 void pop_nest(void);
 void show_activities(void);
-void print_param(int32_t n);
-void print_length_param(int32_t n);
 void print_cmd_chr(uint16_t cmd, int32_t chr_code);
 void not_aat_font_error(int32_t cmd, int32_t c, int32_t f);
 void not_aat_gr_font_error(int32_t cmd, int32_t c, int32_t f);

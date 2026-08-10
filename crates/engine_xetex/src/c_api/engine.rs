@@ -26,6 +26,11 @@ use crate::c_api::teckit::TECkit_DisposeConverter;
 pub use ctx::EngineCtx;
 pub use memory::*;
 
+/* major modes of the engine */
+pub const VMODE: i32 = 1;
+pub const HMODE: i32 = 104;
+pub const MMODE: i32 = 207;
+
 pub const LEVEL_ZERO: u16 = 0;
 pub const LEVEL_ONE: u16 = 1;
 
@@ -39,6 +44,7 @@ pub const TEXT_SIZE: usize = 0;
 pub const SCRIPT_SIZE: usize = 256;
 pub const SCRIPT_SCRIPT_SIZE: usize = 512;
 
+pub const RELAX: i32 = 0;
 pub const ESCAPE: i32 = 0;
 pub const LEFT_BRACE: i32 = 1;
 pub const RIGHT_BRACE: i32 = 2;
@@ -175,12 +181,24 @@ pub const SHAPE_REF: i32 = 120;
 pub const BOX_REF: i32 = 121;
 pub const DATA: i32 = 122;
 
+pub const END_MATCH_TOKEN: i32 = 0x1C00000;
+pub const PROTECTED_TOKEN: i32 = END_MATCH_TOKEN + 1;
+
 pub const MIN_HALFWORD: i32 = -0x0FFFFFFF;
 pub const MAX_HALFWORD: i32 = 0x3FFFFFFF;
 
 pub const TEX_NULL: i32 = MIN_HALFWORD;
 /// The largest positive value that TeX knows
 pub const TEX_INFINITY: i32 = 0x7FFFFFFF;
+
+/* ABOVE */
+pub const DELIMITED_CODE: i32 = 3;
+
+/* VALIGN overloads */
+pub const BEGIN_L_CODE: i32 = 6;
+pub const END_L_CODE: i32 = 7;
+pub const BEGIN_R_CODE: i32 = 10;
+pub const END_R_CODE: i32 = 11;
 
 /* begin_token_list() types */
 pub const PARAMETER: u16 = 0;
@@ -217,10 +235,17 @@ pub const POST_POST: u8 = 249;
 pub const DEFINE_NATIVE_FONT: u8 = 252;
 
 pub const FONT_BASE: i32 = 0;
+pub const LP_CODE_BASE: i32 = 2;
+pub const RP_CODE_BASE: i32 = 3;
 pub const TOKEN_LIST: u16 = 0;
+
+pub const MARKS_CODE: i32 = 5;
 
 pub const MAX_CHAR_VAL: i32 = 0x200000;
 pub const CS_TOKEN_FLAG: i32 = 0x1FFFFFF;
+
+pub const MU_VAL: i32 = 3;
+pub const UNLESS_CODE: i32 = 32;
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum InteractionMode {
@@ -354,6 +379,18 @@ pub struct ListStateRecord {
     prev_graf: i32,
     mode_line: i32,
     aux: MemoryWord,
+}
+
+pub fn math_fam(x: i32) -> u8 {
+    (((x as u32) >> 24) & 0xFF) as u8
+}
+
+pub fn math_class(x: i32) -> u8 {
+    (((x as u32) >> 21) & 0x07) as u8
+}
+
+pub fn math_char(x: i32) -> u32 {
+    (x as u32) & 0x1FFFFF
 }
 
 fn checkpool_pointer(

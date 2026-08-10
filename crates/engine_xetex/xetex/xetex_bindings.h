@@ -38,6 +38,12 @@ typedef unsigned char Flags;
 
 #define SPX_ID_BYTE 100
 
+#define VMODE 1
+
+#define HMODE 104
+
+#define MMODE 207
+
 #define LEVEL_ZERO 0
 
 #define LEVEL_ONE 1
@@ -57,6 +63,8 @@ typedef unsigned char Flags;
 #define SCRIPT_SIZE 256
 
 #define SCRIPT_SCRIPT_SIZE 512
+
+#define RELAX 0
 
 #define ESCAPE 0
 
@@ -328,6 +336,10 @@ typedef unsigned char Flags;
 
 #define DATA 122
 
+#define END_MATCH_TOKEN 29360128
+
+#define PROTECTED_TOKEN (END_MATCH_TOKEN + 1)
+
 #define MIN_HALFWORD -268435455
 
 #define MAX_HALFWORD 1073741823
@@ -338,6 +350,16 @@ typedef unsigned char Flags;
  * The largest positive value that TeX knows
  */
 #define TEX_INFINITY 2147483647
+
+#define DELIMITED_CODE 3
+
+#define BEGIN_L_CODE 6
+
+#define END_L_CODE 7
+
+#define BEGIN_R_CODE 10
+
+#define END_R_CODE 11
 
 #define PARAMETER 0
 
@@ -399,17 +421,135 @@ typedef unsigned char Flags;
 
 #define FONT_BASE 0
 
+#define LP_CODE_BASE 2
+
+#define RP_CODE_BASE 3
+
 #define TOKEN_LIST 0
+
+#define MARKS_CODE 5
 
 #define MAX_CHAR_VAL 2097152
 
 #define CS_TOKEN_FLAG 33554431
 
+#define MU_VAL 3
+
+#define UNLESS_CODE 32
+
 #define GLUE_SPEC_SIZE 4
+
+#define HLIST_NODE 0
+
+#define VLIST_NODE 1
+
+#define RULE_NODE 2
+
+#define INS_NODE 3
+
+#define MARK_NODE 4
+
+#define ADJUST_NODE 5
+
+#define LIGATURE_NODE 6
+
+#define DISC_NODE 7
 
 #define WHATSIT_NODE 8
 
+#define MATH_NODE 9
+
+#define GLUE_NODE 10
+
+#define KERN_NODE 11
+
+#define PENALTY_NODE 12
+
+#define UNSET_NODE 13
+
+#define STYLE_NODE 14
+
+#define CHOICE_NODE 15
+
+#define MARGIN_KERN_NODE 40
+
+#define TT_LEFT_RIGHT_MIDDLE_MODE 1
+
+#define ORD_NOAD 16
+
+#define OP_NOAD 17
+
+#define BIN_NOAD 18
+
+#define REL_NOAD 19
+
+#define OPEN_NOAD 20
+
+#define CLOSE_NOAD 21
+
+#define PUNCT_NOAD 22
+
+#define INNER_NOAD 23
+
+#define RADICAL_NOAD 24
+
+#define FRACTION_NOAD 25
+
+#define UNDER_NOAD 26
+
+#define OVER_NOAD 27
+
+#define ACCENT_NOAD 28
+
+#define VCENTER_NOAD 29
+
+#define LEFT_NOAD 30
+
+#define RIGHT_NOAD 31
+
+#define NORMAL 0
+
+#define MU_GLUE 99
+
+#define A_LEADERS 100
+
+#define C_LEADERS 101
+
+#define X_LEADERS 102
+
+#define DISPLAY_STYLE 0
+
+#define TEXT_STYLE 2
+
+#define SCRIPT_STYLE 4
+
+#define SCRIPT_SCRIPT_STYLE 6
+
+#define LIMITS 1
+
+#define NO_LIMITS 2
+
+#define OPEN_NODE 0
+
+#define WRITE_NODE 1
+
+#define CLOSE_NODE 2
+
+#define SPECIAL_NODE 3
+
+#define LANGUAGE_NODE 4
+
+#define PDF_SAVE_POS_NODE 21
+
 #define NATIVE_WORD_NODE 40
+
+#define NATIVE_WORD_NODE_AT 41
+
+#define GLYPH_NODE 42
+
+#define PIC_NODE 43
+
+#define PDF_NODE 44
 
 #define EQTB_SIZE 8941458
 
@@ -419,11 +559,421 @@ typedef unsigned char Flags;
 
 #define PRIM_EQTB_BASE 2243238
 
+#define GLUE_BASE 2254340
+
+#define SKIP_BASE 2254359
+
+#define MU_SKIP_BASE 2254615
+
 #define LOCAL_BASE 2254871
+
+#define TOKS_BASE 2254884
+
+#define ETEX_PEN_BASE 2255140
+
+#define MATH_FONT_BASE 2255401
 
 #define CAT_CODE_BASE 2256169
 
+#define LC_CODE_BASE 3370281
+
+#define UC_CODE_BASE 4484393
+
+#define SF_CODE_BASE 5598505
+
+#define MATH_CODE_BASE 6712617
+
 #define INT_BASE 7826729
+
+#define COUNT_BASE 7826812
+
+#define DEL_CODE_BASE 7827068
+
+#define DIMEN_BASE 8941180
+
+#define SCALED_BASE 8941203
+
+#define ABOVE_CODE 0
+
+#define OVER_CODE 1
+
+#define ATOP_CODE 2
+
+#define TT_ABOVE_WITH_DELIMS 3
+
+#define TT_OVER_WITH_DELIMS 4
+
+#define TT_ATOP_WITH_DELIMS 5
+
+#define BOX_CODE 0
+
+#define COPY_CODE 1
+
+#define LAST_BOX_CODE 2
+
+#define VSPLIT_CODE 3
+
+#define VTOP_CODE 4
+
+#define TT_VBOX_CODE 5
+
+#define TT_HBOX_CODE 108
+
+#define NUMBER_CODE 0
+
+#define ROMAN_NUMERAL_CODE 1
+
+#define STRING_CODE 2
+
+#define MEANING_CODE 3
+
+#define FONT_NAME_CODE 4
+
+#define ETEX_CONVERT_BASE 5
+
+#define ETEX_REVISION_CODE 5
+
+#define ETEX_CONVERT_CODES 6
+
+#define EXPANDED_CODE 6
+
+#define PDFTEX_FIRST_EXPAND_CODE 7
+
+#define LEFT_MARGIN_KERN_CODE 16
+
+#define RIGHT_MARGIN_KERN_CODE 17
+
+#define PDF_STRCMP_CODE 18
+
+#define PDF_CREATION_DATE_CODE 22
+
+#define PDF_FILE_MOD_DATE_CODE 23
+
+#define PDF_FILE_SIZE_CODE 24
+
+#define PDF_MDFIVE_SUM_CODE 25
+
+#define PDF_FILE_DUMP_CODE 26
+
+#define UNIFORM_DEVIATE_CODE 29
+
+#define NORMAL_DEVIATE_CODE 30
+
+#define PDFTEX_CONVERT_CODES 33
+
+#define XETEX_FIRST_EXPAND_CODE 33
+
+#define XETEX_REVISION_CODE 33
+
+#define XETEX_VARIATION_NAME_CODE 34
+
+#define XETEX_FEATURE_NAME_CODE 35
+
+#define XETEX_SELECTOR_NAME_CODE 36
+
+#define XETEX_GLYPH_NAME_CODE 37
+
+#define XETEX_UCHAR_CODE 38
+
+#define XETEX_UCHARCAT_CODE 39
+
+#define JOB_NAME_CODE 40
+
+#define XETEX_CONVERT_CODES 40
+
+#define IMMEDIATE_CODE 4
+
+#define SET_LANGUAGE_CODE 5
+
+#define RESET_TIMER_CODE 31
+
+#define SET_RANDOM_SEED_CODE 33
+
+#define PIC_FILE_CODE 41
+
+#define PDF_FILE_CODE 42
+
+#define GLYPH_CODE 43
+
+#define XETEX_INPUT_ENCODING_EXTENSION_CODE 44
+
+#define XETEX_DEFAULT_ENCODING_EXTENSION_CODE 45
+
+#define XETEX_LINEBREAK_LOCALE_EXTENSION_CODE 46
+
+#define FI_CODE 2
+
+#define ELSE_CODE 3
+
+#define OR_CODE 4
+
+#define IF_CHAR_CODE 0
+
+#define IF_CAT_CODE 1
+
+#define IF_INT_CODE 2
+
+#define IF_DIM_CODE 3
+
+#define IF_ODD_CODE 4
+
+#define IF_VMODE_CODE 5
+
+#define IF_HMODE_CODE 6
+
+#define IF_MMODE_CODE 7
+
+#define IF_INNER_CODE 8
+
+#define IF_VOID_CODE 9
+
+#define IF_HBOX_CODE 10
+
+#define IF_VBOX_CODE 11
+
+#define IFX_CODE 12
+
+#define IF_EOF_CODE 13
+
+#define IF_TRUE_CODE 14
+
+#define IF_FALSE_CODE 15
+
+#define IF_CASE_CODE 16
+
+#define IF_DEF_CODE 17
+
+#define IF_CS_CODE 18
+
+#define IF_FONT_CHAR_CODE 19
+
+#define IF_IN_CSNAME_CODE 20
+
+#define IF_PRIMITIVE_CODE 21
+
+#define INT_VAL 0
+
+#define DIMEN_VAL 1
+
+#define GLUE_VAL 2
+
+#define LAST_NODE_TYPE_CODE 3
+
+#define INPUT_LINE_NO_CODE 4
+
+#define BADNESS_CODE 5
+
+#define PDFTEX_FIRST_RINT_CODE 6
+
+#define PDF_LAST_X_POS_CODE 12
+
+#define PDF_LAST_Y_POS_CODE 13
+
+#define ELAPSED_TIME_CODE 16
+
+#define PDF_SHELL_ESCAPE_CODE 17
+
+#define RANDOM_SEED_CODE 18
+
+#define ETEX_INT 19
+
+#define ETEX_VERSION_CODE 19
+
+#define CURRENT_GROUP_LEVEL_CODE 20
+
+#define CURRENT_GROUP_TYPE_CODE 21
+
+#define CURRENT_IF_LEVEL_CODE 22
+
+#define CURRENT_IF_TYPE_CODE 23
+
+#define CURRENT_IF_BRANCH_CODE 24
+
+#define GLUE_STRETCH_ORDER_CODE 25
+
+#define GLUE_SHRINK_ORDER_CODE 26
+
+#define XETEX_INT 27
+
+#define XETEX_VERSION_CODE 27
+
+#define XETEX_COUNT_GLYPHS_CODE 28
+
+#define XETEX_COUNT_VARIATIONS_CODE 29
+
+#define XETEX_VARIATION_CODE 30
+
+#define XETEX_FIND_VARIATION_BY_NAME_CODE 31
+
+#define XETEX_VARIATION_MIN_CODE 32
+
+#define XETEX_VARIATION_MAX_CODE 33
+
+#define XETEX_VARIATION_DEFAULT_CODE 34
+
+#define XETEX_COUNT_FEATURES_CODE 35
+
+#define XETEX_FEATURE_CODE_CODE 36
+
+#define XETEX_FIND_FEATURE_BY_NAME_CODE 37
+
+#define XETEX_IS_EXCLUSIVE_FEATURE_CODE 38
+
+#define XETEX_COUNT_SELECTORS_CODE 39
+
+#define XETEX_SELECTOR_CODE_CODE 40
+
+#define XETEX_FIND_SELECTOR_BY_NAME_CODE 41
+
+#define XETEX_IS_DEFAULT_SELECTOR_CODE 42
+
+#define XETEX_OT_COUNT_SCRIPTS_CODE 43
+
+#define XETEX_OT_COUNT_LANGUAGES_CODE 44
+
+#define XETEX_OT_COUNT_FEATURES_CODE 45
+
+#define XETEX_OT_SCRIPT_CODE 46
+
+#define XETEX_OT_LANGUAGE_CODE 47
+
+#define XETEX_OT_FEATURE_CODE 48
+
+#define XETEX_MAP_CHAR_TO_GLYPH_CODE 49
+
+#define XETEX_GLYPH_INDEX_CODE 50
+
+#define XETEX_FONT_TYPE_CODE 51
+
+#define XETEX_FIRST_CHAR_CODE 52
+
+#define XETEX_LAST_CHAR_CODE 53
+
+#define XETEX_PDF_PAGE_COUNT_CODE 54
+
+#define XETEX_LAST_ITEM_CODES 54
+
+#define XETEX_DIM 55
+
+#define XETEX_GLYPH_BOUNDS_CODE 55
+
+#define XETEX_LAST_DIM_CODES 55
+
+#define ETEX_DIM 56
+
+#define FONT_CHAR_WD_CODE 56
+
+#define FONT_CHAR_HT_CODE 57
+
+#define FONT_CHAR_DP_CODE 58
+
+#define FONT_CHAR_IC_CODE 59
+
+#define PAR_SHAPE_LENGTH_CODE 60
+
+#define PAR_SHAPE_INDENT_CODE 61
+
+#define PAR_SHAPE_DIMEN_CODE 62
+
+#define GLUE_STRETCH_CODE 63
+
+#define GLUE_SHRINK_CODE 64
+
+#define ETEX_GLUE 65
+
+#define MU_TO_GLUE_CODE 65
+
+#define ETEX_MU 66
+
+#define GLUE_TO_MU_CODE 66
+
+#define ETEX_EXPR 67
+
+#define TT_ETEX_NUM_EXPR_CODE 67
+
+#define TT_ETEX_DIM_EXPR_CODE 68
+
+#define TT_ETEX_GLUE_EXPR_CODE 69
+
+#define TT_ETEX_MU_EXPR_CODE 70
+
+#define WIDTH_OFFSET 1
+
+#define DEPTH_OFFSET 2
+
+#define HEIGHT_OFFSET 3
+
+#define CHAR_DEF_CODE 0
+
+#define MATH_CHAR_DEF_CODE 1
+
+#define COUNT_DEF_CODE 2
+
+#define DIMEN_DEF_CODE 3
+
+#define SKIP_DEF_CODE 4
+
+#define MU_SKIP_DEF_CODE 5
+
+#define TOKS_DEF_CODE 6
+
+#define CHAR_SUB_DEF_CODE 7
+
+#define XETEX_MATH_CHAR_NUM_DEF_CODE 8
+
+#define XETEX_MATH_CHAR_DEF_CODE 9
+
+#define FIL_CODE 0
+
+#define FILL_CODE 1
+
+#define SS_CODE 2
+
+#define FIL_NEG_CODE 3
+
+#define SKIP_CODE 4
+
+#define MSKIP_CODE 5
+
+#define SPAN_CODE 1114113
+
+#define CR_CODE 1114114
+
+#define CR_CR_CODE 1114115
+
+#define TOP_MARK_CODE 0
+
+#define FIRST_MARK_CODE 1
+
+#define BOT_MARK_CODE 2
+
+#define SPLIT_FIRST_MARK_CODE 3
+
+#define SPLIT_BOT_MARK_CODE 4
+
+#define TT_TOP_MARKS_CODE 5
+
+#define TT_FIRST_MARKS_CODE 6
+
+#define TT_BOT_MARKS_CODE 7
+
+#define TT_SPLIT_FIRST_MARKS_CODE 8
+
+#define TT_SPLIT_BOT_MARKS_CODE 9
+
+#define SHOW_CODE 0
+
+#define SHOW_BOX_CODE 1
+
+#define SHOW_THE_CODE 2
+
+#define SHOW_LISTS 3
+
+#define SHOW_GROUPS 4
+
+#define SHOW_TOKENS 5
+
+#define SHOW_IFS 6
 
 #define INT_PARS 83
 
@@ -1647,6 +2197,12 @@ void print_ucs_code(uint32_t n);
 void print_current_string(void);
 
 void print_roman_int(int32_t n);
+
+void print_skip_param(int32_t n);
+
+void print_style(int32_t c);
+
+void print_cmd_chr(uint16_t cmd, int32_t chr_code);
 
 void resize_str_pool(uintptr_t size);
 
