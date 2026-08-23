@@ -2789,65 +2789,6 @@ void show_cur_cmd_chr(void)
     end_diagnostic(false);
 }
 
-void
-begin_token_list(int32_t p, uint16_t t)
-{
-    if (input_ptr() > max_in_stack)
-    {
-        max_in_stack = input_ptr();
-        if (input_ptr() == stack_size)
-            overflow("input stack size", stack_size);
-    }
-
-    set_input_stack(input_ptr(), cur_input());
-    set_input_ptr(input_ptr() + 1);
-
-    cur_input_ptr()->state = TOKEN_LIST;
-    cur_input_ptr()->start = p;
-    cur_input_ptr()->index = t;
-
-    if (t >= MACRO)
-    {
-        mem_ptr(p)->b32.s0++;
-
-        if (t == MACRO)
-        {
-            cur_input_ptr()->limit = param_ptr();
-        }
-        else
-        {
-            cur_input_ptr()->loc = mem(p).b32.s1;
-
-            if (INTPAR(tracing_macros) > 1)
-            {
-                begin_diagnostic();
-                diagnostic_begin_capture_warning_here();
-                print_nl_cstr("");
-                switch (t)
-                {
-                case MARK_TEXT:
-                    print_esc_cstr("mark");
-                    break;
-                case WRITE_TEXT:
-                    print_esc_cstr("write");
-                    break;
-                default:
-                    print_cmd_chr(ASSIGN_TOKS, t + LOCAL_BASE + LOCAL__output_routine - OUTPUT_TEXT);
-                    break;
-                }
-                print_cstr("->");
-                token_show(p);
-                capture_to_diagnostic(NULL);
-                end_diagnostic(false);
-            }
-        }
-    }
-    else
-    {
-        cur_input_ptr()->loc = p;
-    }
-}
-
 void back_input(void)
 {
     int32_t p;
@@ -2864,11 +2805,11 @@ void back_input(void)
             set_align_state(align_state() + 1);
     }
     {
-        if (input_ptr() > max_in_stack)
+        if (input_ptr() > max_in_stack())
         {
-            max_in_stack = input_ptr();
-            if (input_ptr() == stack_size)
-                overflow("input stack size", stack_size);
+            set_max_in_stack(input_ptr());
+            if (input_ptr() == stack_size())
+                overflow("input stack size", stack_size());
         }
         set_input_stack(input_ptr(), cur_input());
         set_input_ptr(input_ptr() + 1);
@@ -2902,11 +2843,11 @@ void begin_file_reading(void)
         overflow("buffer size", buf_size);
     set_in_open(in_open() + 1);
     {
-        if (input_ptr() > max_in_stack)
+        if (input_ptr() > max_in_stack())
         {
-            max_in_stack = input_ptr();
-            if (input_ptr() == stack_size)
-                overflow("input stack size", stack_size);
+            set_max_in_stack(input_ptr());
+            if (input_ptr() == stack_size())
+                overflow("input stack size", stack_size());
         }
         set_input_stack(input_ptr(), cur_input());
         set_input_ptr(input_ptr() + 1);

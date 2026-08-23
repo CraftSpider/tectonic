@@ -507,6 +507,8 @@ typedef unsigned char Flags;
 
 #define RIGHT_NOAD 31
 
+#define MIDDLE_NOAD 1
+
 #define NORMAL 0
 
 #define MU_GLUE 99
@@ -1247,6 +1249,8 @@ void delete_token_ref(int32_t p);
 
 void delete_glue_ref(int32_t p);
 
+void begin_token_list(int32_t p, uint16_t t);
+
 void end_token_list(void);
 
 uint32_t selector(void);
@@ -1476,6 +1480,14 @@ void set_avail(int32_t val);
 int32_t rover(void);
 
 void set_rover(int32_t val);
+
+uintptr_t stack_size(void);
+
+void set_stack_size(uintptr_t val);
+
+uintptr_t max_in_stack(void);
+
+void set_max_in_stack(uintptr_t val);
 
 MemoryWord eqtb(uintptr_t idx);
 

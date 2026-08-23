@@ -1,11 +1,15 @@
 use crate::c_api::dvi::{rs_deinitialize_shipout_variables, rs_finalize_dvi_file};
-use crate::c_api::errors::{ffi_abort, rs_fatal_error, rs_int_error, EngineError};
+use crate::c_api::errors::{
+    ffi_abort, rs_begin_diagnostic, rs_end_diagnostic, rs_fatal_error, rs_int_error, rs_overflow,
+    EngineError,
+};
 use crate::c_api::globals::Globals;
 use crate::c_api::is_dir_sep;
 use crate::c_api::output::{
-    rs_capture_to_diagnostic, rs_error_here_with_diagnostic, rs_print, rs_print_bytes,
-    rs_print_char, rs_print_cs, rs_print_esc_bytes, rs_print_int, rs_print_ln, rs_print_nl,
-    rs_print_nl_bytes, rs_print_raw_char,
+    diagnostic_begin_capture_warning_here, rs_capture_to_diagnostic,
+    rs_diagnostic_begin_capture_warning_here, rs_error_here_with_diagnostic, rs_print,
+    rs_print_bytes, rs_print_char, rs_print_cmd_chr, rs_print_cs, rs_print_esc_bytes, rs_print_int,
+    rs_print_ln, rs_print_nl, rs_print_nl_bytes, rs_print_raw_char,
 };
 use crate::c_api::pool::{
     rs_make_string, rs_search_string, rs_slow_make_string, StringPool, EMPTY_STRING, TOO_BIG_CHAR,
@@ -1382,6 +1386,70 @@ pub fn rs_delete_glue_ref(globals: &mut Globals<'_, '_>, p: usize) {
 #[no_mangle]
 pub extern "C" fn delete_glue_ref(p: i32) {
     Globals::with(|globals| rs_delete_glue_ref(globals, p as usize))
+}
+
+pub fn rs_begin_token_list(
+    globals: &mut Globals<'_, '_>,
+    p: usize,
+    t: u16,
+) -> Result<(), EngineError> {
+    if globals.engine.input_ptr > globals.engine.max_in_stack {
+        globals.engine.max_in_stack = globals.engine.input_ptr;
+        if globals.engine.input_ptr == globals.engine.stack_size {
+            rs_overflow(
+                globals,
+                b"input stack size",
+                globals.engine.stack_size as i32,
+            )?;
+        }
+    }
+
+    globals.engine.input_stack[globals.engine.input_ptr] = globals.engine.cur_input.clone();
+    globals.engine.input_ptr += 1;
+
+    globals.engine.cur_input.state = TOKEN_LIST;
+    globals.engine.cur_input.start = p as i32;
+    globals.engine.cur_input.index = t;
+
+    if t >= MACRO {
+        unsafe { globals.engine.mem[p].b32.s0 += 1 };
+        if t == MACRO {
+            globals.engine.cur_input.limit = globals.engine.param_ptr;
+        } else {
+            globals.engine.cur_input.loc = unsafe { globals.engine.mem[p].b32.s1 };
+
+            if globals.engine.int_par(IntPar::TracingMacros) > 1 {
+                rs_begin_diagnostic(globals);
+                rs_diagnostic_begin_capture_warning_here(globals);
+                rs_print_nl_bytes(globals, b"");
+                match t {
+                    MARK_TEXT => rs_print_esc_bytes(globals, b"mark"),
+                    WRITE_TEXT => rs_print_esc_bytes(globals, b"write"),
+                    _ => {
+                        rs_print_cmd_chr(
+                            globals,
+                            ASSIGN_TOKS as u16,
+                            t as i32 + LOCAL_BASE as i32 + Local::OutputRoutine as i32
+                                - OUTPUT_TEXT as i32,
+                        );
+                    }
+                }
+                rs_print_bytes(globals, b"->");
+                rs_token_show(globals, p);
+                rs_capture_to_diagnostic(globals, None);
+                rs_end_diagnostic(globals, false);
+            }
+        }
+    } else {
+        globals.engine.cur_input.loc = p as i32;
+    }
+    Ok(())
+}
+
+#[no_mangle]
+pub extern "C-unwind" fn begin_token_list(p: i32, t: u16) {
+    let res = Globals::with(|globals| rs_begin_token_list(globals, p as usize, t));
+    ffi_abort(res)
 }
 
 pub fn rs_end_token_list(globals: &mut Globals<'_, '_>) -> Result<(), EngineError> {

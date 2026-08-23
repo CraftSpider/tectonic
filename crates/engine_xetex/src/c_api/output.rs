@@ -155,6 +155,13 @@ pub unsafe extern "C" fn diagnostic_print_file_line(diagnostic: *mut Diagnostic)
     Globals::with(|globals| rs_diagnostic_print_file_line(globals, &mut *diagnostic))
 }
 
+pub fn rs_diagnostic_begin_capture_warning_here(globals: &mut Globals) -> *mut Diagnostic {
+    let mut warning = Diagnostic::warning();
+    rs_diagnostic_print_file_line(globals, &mut warning);
+    rs_capture_to_diagnostic(globals, Some(Box::new(warning)));
+    ptr::from_mut(globals.out.current_diagnostic.as_deref_mut().unwrap())
+}
+
 /// Duplicate messages printed to log/terminal into a warning diagnostic buffer,
 /// until a call capture_to_diagnostic(0). A standard usage of this is
 /// ```c
@@ -172,12 +179,7 @@ pub unsafe extern "C" fn diagnostic_print_file_line(diagnostic: *mut Diagnostic)
 /// that we haven't yet wired up anything that uses it.
 #[no_mangle]
 pub extern "C" fn diagnostic_begin_capture_warning_here() -> *mut Diagnostic {
-    let mut warning = Diagnostic::warning();
-    Globals::with(|globals| {
-        rs_diagnostic_print_file_line(globals, &mut warning);
-        rs_capture_to_diagnostic(globals, Some(Box::new(warning)));
-        ptr::from_mut(globals.out.current_diagnostic.as_deref_mut().unwrap())
-    })
+    Globals::with(rs_diagnostic_begin_capture_warning_here)
 }
 
 // From C code: This replaces the "print file+line number" block at the start of errors
